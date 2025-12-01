@@ -1,38 +1,42 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "18"
-  VITE_API_URL = "https://votre-backend-render.onrender.com"
+  NPM_FLAGS = "--production=false"
 
-# Redirections SPA - IMPORTANT pour React Router
+[context.production.environment]
+  VITE_API_URL = "https://gescardcocodybackend.onrender.com"
+  VITE_NODE_ENV = "production"
+  VITE_APP_NAME = "GESCARD"
+  VITE_APP_VERSION = "2.0.0"
+
+[context.deploy-preview.environment]
+  VITE_API_URL = "https://gescardcocodybackend.onrender.com"
+  VITE_NODE_ENV = "development"
+  VITE_APP_NAME = "GESCARD (Preview)"
+  VITE_APP_VERSION = "2.0.0"
+
+[context.branch-deploy.environment]
+  VITE_API_URL = "https://gescardcocodybackend.onrender.com"
+  VITE_NODE_ENV = "development"
+  VITE_APP_NAME = "GESCARD (Branch)"
+  VITE_APP_VERSION = "2.0.0"
+
+# Headers pour CORS
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# Redirects
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-# Headers de sécurité
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Frame-Options = "DENY"
-    X-XSS-Protection = "1; mode=block"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-
-# Optimisation du cache
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/*.js"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/*.css"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"

@@ -1,5 +1,7 @@
+// src/services/utilisateursService.ts
 import api from './api';
 
+// ✅ Interfaces DÉFINIES ICI - PAS de duplication avec cartesService
 export interface LoginData {
   NomUtilisateur: string;
   MotDePasse: string;
@@ -15,22 +17,46 @@ export interface Utilisateur {
 }
 
 export interface LoginResponse {
+  success: boolean;
   message: string;
   token: string;
   utilisateur: Utilisateur;
 }
 
-// Fonction pour se connecter
+// ✅ Fonction pour se connecter
 export const loginUser = async (data: LoginData): Promise<LoginResponse> => {
   try {
+    console.log('🔐 Tentative de connexion...', { username: data.NomUtilisateur });
+    
     const response = await api.post('/auth/login', data);
+    
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Identifiants incorrects');
+    }
+    
     return response.data;
+    
   } catch (error: any) {
-    throw new Error(error.response?.data?.message || "Erreur lors de la connexion");
+    console.error('💥 Erreur loginUser:', {
+      message: error.message,
+      response: error.response?.data
+    });
+    
+    let userMessage = error.message;
+    
+    if (error.message.includes('network') || error.message.includes('Network')) {
+      userMessage = 'Impossible de se connecter au serveur. Vérifiez votre connexion.';
+    } else if (error.response?.data?.message) {
+      userMessage = error.response.data.message;
+    } else if (error.response?.status === 401) {
+      userMessage = 'Nom d\'utilisateur ou mot de passe incorrect';
+    }
+    
+    throw new Error(userMessage);
   }
 };
 
-// Fonction pour récupérer le profil
+// ✅ Fonction pour récupérer le profil
 export const getProfil = async (): Promise<Utilisateur> => {
   try {
     const response = await api.get('/profil');
@@ -40,15 +66,32 @@ export const getProfil = async (): Promise<Utilisateur> => {
   }
 };
 
-// Test de connexion API
-export const testApiConnection = async (): Promise<boolean> => {
+// ✅ Test de connexion API
+export const testApiConnection = async (): Promise<{
+  success: boolean;
+  message: string;
+  details?: any;
+}> => {
   try {
-    await api.get('/health');
-    return true;
-  } catch (error) {
-    console.error('❌ Test de connexion API échoué:', error);
-    return false;
+    console.log('🧪 Test de connexion API...');
+    
+    const response = await api.get('/api/health');
+    
+    return {
+      success: true,
+      message: '✅ Connexion API établie',
+      details: response.data
+    };
+    
+  } catch (error: any) {
+    console.error('❌ Test de connexion échoué:', error);
+    
+    return {
+      success: false,
+      message: `❌ Impossible de se connecter à l'API: ${error.message}`,
+      details: error.response?.data
+    };
   }
 };
 
-export default api;
+// ✅ Pas d'export default ici, seulement des exports nommés
