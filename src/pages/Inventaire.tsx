@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import Navbar from "../components/Navbar";
 import TableCartesExcel from "../components/TableCartesExcel";
 import ImportModal from "../components/ImportModal";
-import { updateCartes, cartesService } from "../service/CartesService";
+import cartesService from "../service/CartesService";
 import type { Carte } from "../service/CartesService";
 
 const Inventaire: React.FC = () => {
@@ -57,7 +57,7 @@ const Inventaire: React.FC = () => {
     
     try {
       // 1. D'abord forcer le recalcul des statistiques
-      await cartesService.forceRefreshAndGetStats(token);
+      await cartesService.forceRefreshAndGetStats();
       console.log('✅ Statistiques recalculées avec succès');
     } catch (error: any) {
       console.warn('⚠️ Recalcul des statistiques échoué, continuation...');
@@ -194,7 +194,7 @@ const Inventaire: React.FC = () => {
       }
       
       // ✅ SAUVEGARDER SEULEMENT LES CARTES VALIDES
-      await updateCartes(cartesValides, token);
+      await cartesService.updateCartes(cartesValides);
       setHasModifications(false);
       
       // 🚨 FORCER LA SYNCHRONISATION AVEC LE DASHBOARD

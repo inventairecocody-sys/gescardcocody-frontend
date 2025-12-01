@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "../components/Navbar";
-import { cartesService } from "../service/CartesService";
+import cartesService from "../service/CartesService";
 import type { StatistiquesGlobales, StatistiqueSite } from "../service/CartesService";
 
 const Dashboard: React.FC = () => {
@@ -111,8 +111,8 @@ const Dashboard: React.FC = () => {
       
       // Utiliser forceRefreshAndGetStats si forcé
       const { globales, sites } = force 
-        ? await cartesService.forceRefreshAndGetStats(token)
-        : await cartesService.refreshStatistiques(token);
+        ? await cartesService.forceRefreshAndGetStats()
+        : await cartesService.refreshStatistiques();
       
       setStatistiquesGlobales(globales);
       setStatistiquesSites(sites);
