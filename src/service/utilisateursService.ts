@@ -28,7 +28,8 @@ export const loginUser = async (data: LoginData): Promise<LoginResponse> => {
   try {
     console.log('🔐 Tentative de connexion...', { username: data.NomUtilisateur });
     
-    const response = await api.post('/auth/login', data);
+    // ✅ CORRIGÉ : /api/auth/login au lieu de /auth/login
+    const response = await api.post('/api/auth/login', data);
     
     if (!response.data.success) {
       throw new Error(response.data.message || 'Identifiants incorrects');
@@ -59,7 +60,7 @@ export const loginUser = async (data: LoginData): Promise<LoginResponse> => {
 // ✅ Fonction pour récupérer le profil
 export const getProfil = async (): Promise<Utilisateur> => {
   try {
-    const response = await api.get('/profil');
+    const response = await api.get('/api/profil');
     return response.data.utilisateur || response.data;
   } catch (error: any) {
     throw new Error(error.response?.data?.message || "Erreur lors de la récupération du profil");

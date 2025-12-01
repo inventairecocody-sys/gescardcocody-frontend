@@ -35,7 +35,8 @@ export interface StatistiqueSite {
 // ✅ Fonction pour obtenir les statistiques globales
 export const getStatistiquesGlobales = async (): Promise<StatistiquesGlobales> => {
   try {
-    const response = await api.get('/statistiques/globales');
+    // ✅ CORRIGÉ : Ajout du préfixe /api
+    const response = await api.get('/api/statistiques/globales');
     
     if (response.data) {
       return response.data;
@@ -55,7 +56,8 @@ export const getStatistiquesGlobales = async (): Promise<StatistiquesGlobales> =
 // ✅ Fonction pour obtenir les statistiques par site
 export const getStatistiquesParSite = async (): Promise<StatistiqueSite[]> => {
   try {
-    const response = await api.get('/statistiques/sites');
+    // ✅ CORRIGÉ : Ajout du préfixe /api
+    const response = await api.get('/api/statistiques/sites');
     
     if (response.data) {
       return response.data;
@@ -73,7 +75,8 @@ export const forceRefreshStatistiques = async (): Promise<void> => {
   try {
     console.log("🔄 Forçage du recalcul des statistiques...");
     
-    const response = await api.post('/statistiques/refresh');
+    // ✅ CORRIGÉ : Ajout du préfixe /api
+    const response = await api.post('/api/statistiques/refresh');
     
     if (response.status !== 200) {
       throw new Error(`Refresh failed: ${response.status}`);
@@ -140,7 +143,8 @@ class CartesService {
     try {
       const role = localStorage.getItem("role") || "";
       
-      const response = await api.put('/cartes/batch', { 
+      // ✅ CORRIGÉ : Ajout du préfixe /api
+      const response = await api.put('/api/cartes/batch', { 
         cartes, 
         role 
       });
@@ -155,7 +159,8 @@ class CartesService {
   // ✅ Obtenir toutes les cartes
   async getCartes(): Promise<Carte[]> {
     try {
-      const response = await api.get('/cartes');
+      // ✅ CORRIGÉ : Ajout du préfixe /api
+      const response = await api.get('/api/cartes');
       return response.data.cartes || [];
     } catch (error) {
       console.error('Erreur dans getCartes:', error);
@@ -166,7 +171,8 @@ class CartesService {
   // ✅ Obtenir les cartes paginées
   async getCartesPaginated(page: number = 1, limit: number = 100): Promise<any> {
     try {
-      const response = await api.get(`/cartes?page=${page}&limit=${limit}`);
+      // ✅ CORRIGÉ : Ajout du préfixe /api
+      const response = await api.get(`/api/cartes?page=${page}&limit=${limit}`);
       return response.data;
     } catch (error) {
       console.error('Erreur dans getCartesPaginated:', error);
@@ -205,7 +211,8 @@ class CartesService {
       if (criteres.page) params.append('page', criteres.page.toString());
       if (criteres.limit) params.append('limit', criteres.limit.toString());
 
-      const response = await api.get(`/inventaire/recherche?${params}`);
+      // ✅ CORRIGÉ : Ajout du préfixe /api
+      const response = await api.get(`/api/inventaire/recherche?${params}`);
       return response.data;
     } catch (error) {
       console.error('Erreur dans rechercherCartes:', error);
@@ -216,7 +223,8 @@ class CartesService {
   // ✅ Créer une carte
   async createCarte(carte: Carte): Promise<number> {
     try {
-      const response = await api.post('/cartes', carte);
+      // ✅ CORRIGÉ : Ajout du préfixe /api
+      const response = await api.post('/api/cartes', carte);
       return response.data.id;
     } catch (error) {
       console.error('Erreur dans createCarte:', error);
@@ -227,7 +235,8 @@ class CartesService {
   // ✅ Supprimer une carte
   async deleteCarte(id: number): Promise<void> {
     try {
-      const response = await api.delete(`/cartes/${id}`);
+      // ✅ CORRIGÉ : Ajout du préfixe /api
+      const response = await api.delete(`/api/cartes/${id}`);
       return response.data;
     } catch (error) {
       console.error('Erreur dans deleteCarte:', error);
@@ -243,7 +252,8 @@ class CartesService {
     parSite: { [site: string]: number };
   }> {
     try {
-      const response = await api.get('/cartes/statistiques/total');
+      // ✅ CORRIGÉ : Ajout du préfixe /api
+      const response = await api.get('/api/cartes/statistiques/total');
       return response.data;
     } catch (error) {
       console.error('Erreur dans getStatistiques:', error);

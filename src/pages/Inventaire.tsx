@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import TableCartesExcel from "../components/TableCartesExcel";
 import ImportModal from "../components/ImportModal";
 import cartesService from "../service/CartesService";
+import api from "../service/api";
 import type { Carte } from "../service/CartesService";
 
 const Inventaire: React.FC = () => {
@@ -30,7 +31,6 @@ const Inventaire: React.FC = () => {
   });
 
   const role = localStorage.getItem("role") || "";
-  const token = localStorage.getItem("token") || "";
 
   // ✅ CONFIGURATION DES PERMISSIONS
   const canModifyData = ["Administrateur", "Superviseur"].includes(role);
@@ -97,7 +97,7 @@ const Inventaire: React.FC = () => {
     console.log('✅ Notification du Dashboard terminée');
   };
 
-  // 🔍 RECHERCHE MULTICRITÈRES AVEC PAGINATION
+  // 🔍 RECHERCHE MULTICRITÈRES AVEC PAGINATION - CORRIGÉE
   const handleRecherche = async (page: number = 1) => {
     if (!checkToken()) return;
     
@@ -111,36 +111,32 @@ const Inventaire: React.FC = () => {
       params.append('page', page.toString());
       params.append('limit', '50');
 
-      const response = await fetch(`http://localhost:3000/api/inventaire/recherche?${params}`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // ✅ CORRIGÉ : Utiliser l'instance api au lieu de fetch
+      const response = await api.get(`/api/inventaire/recherche?${params}`);
 
-      if (response.status === 403 || response.status === 401) {
+      const data = response.data;
+      setResultats(data.cartes);
+      setTotalResultats(data.total);
+      setCurrentPage(data.page);
+      setTotalPages(data.totalPages);
+      setHasModifications(false); // Réinitialiser les modifications après une nouvelle recherche
+      
+    } catch (error: any) {
+      console.error("❌ Erreur recherche:", error);
+      
+      if (error.response?.status === 403 || error.response?.status === 401) {
         alert('Session expirée. Veuillez vous reconnecter.');
         localStorage.removeItem('token');
         localStorage.removeItem('role');
         window.location.href = '/login';
         return;
       }
-
-      if (response.ok) {
-        const data = await response.json();
-        setResultats(data.cartes);
-        setTotalResultats(data.total);
-        setCurrentPage(data.page);
-        setTotalPages(data.totalPages);
-        setHasModifications(false); // Réinitialiser les modifications après une nouvelle recherche
+      
+      if (error.response?.data?.error) {
+        alert(`Erreur lors de la recherche: ${error.response.data.error || 'Erreur serveur'}`);
       } else {
-        const errorData = await response.json();
-        console.error("Erreur recherche:", errorData);
-        alert(`Erreur lors de la recherche: ${errorData.error || 'Erreur serveur'}`);
+        alert("Erreur de connexion au serveur");
       }
-    } catch (error: any) {
-      console.error("Erreur recherche:", error);
-      alert("Erreur de connexion au serveur");
     } finally {
       setLoading(false);
     }
@@ -233,7 +229,7 @@ const Inventaire: React.FC = () => {
     }
   };
 
-  // 📤 IMPORT EXCEL DIRECT (VERSION CORRIGÉE AVEC SYNCHRO)
+  // 📤 IMPORT EXCEL DIRECT (VERSION CORRIGÉE AVEC SYNCHRO) - CORRIGÉ
   const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!checkToken()) return;
     
@@ -251,25 +247,16 @@ const Inventaire: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:3000/api/import-export/import', {
-        method: 'POST',
+      // ✅ CORRIGÉ : Utiliser l'instance api
+      const response = await api.post('/api/import-export/import', formData, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
         },
-        body: formData,
       });
 
-      if (response.status === 403 || response.status === 401) {
-        alert('Session expirée. Veuillez vous reconnecter.');
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
-        window.location.href = '/login';
-        return;
-      }
+      const result = response.data;
 
-      const result = await response.json();
-
-      if (response.ok) {
+      if (response.status === 200 || response.status === 201) {
         showImportResult(result.stats);
         
         // 📢 NOTIFIER LE DASHBOARD DU CHANGEMENT
@@ -281,6 +268,15 @@ const Inventaire: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Erreur import:', error);
+      
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        alert('Session expirée. Veuillez vous reconnecter.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        window.location.href = '/login';
+        return;
+      }
+      
       alert('❌ Erreur lors de l\'import');
     } finally {
       setImportLoading(false);
@@ -290,7 +286,7 @@ const Inventaire: React.FC = () => {
     }
   };
 
-  // 📤 IMPORT DEPUIS LE MODAL (VERSION CORRIGÉE AVEC SYNCHRO)
+  // 📤 IMPORT DEPUIS LE MODAL (VERSION CORRIGÉE AVEC SYNCHRO) - CORRIGÉ
   const handleImportFromModal = async (file: File) => {
     if (!checkToken()) return;
     
@@ -300,25 +296,16 @@ const Inventaire: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:3000/api/import-export/import', {
-        method: 'POST',
+      // ✅ CORRIGÉ : Utiliser l'instance api
+      const response = await api.post('/api/import-export/import', formData, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
         },
-        body: formData,
       });
 
-      if (response.status === 403 || response.status === 401) {
-        alert('Session expirée. Veuillez vous reconnecter.');
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
-        window.location.href = '/login';
-        return;
-      }
+      const result = response.data;
 
-      const result = await response.json();
-
-      if (response.ok) {
+      if (response.status === 200 || response.status === 201) {
         showImportResult(result.stats);
         
         // 📢 NOTIFIER LE DASHBOARD DU CHANGEMENT
@@ -330,6 +317,15 @@ const Inventaire: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Erreur import:', error);
+      
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        alert('Session expirée. Veuillez vous reconnecter.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        window.location.href = '/login';
+        return;
+      }
+      
       alert('❌ Erreur lors de l\'import');
     } finally {
       setImportLoading(false);
@@ -363,22 +359,13 @@ const Inventaire: React.FC = () => {
     try {
       setLoading(true);
       
-      const response = await fetch(`http://localhost:3000/api/import-export/export`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-        },
+      // ✅ CORRIGÉ : Utiliser l'instance api
+      const response = await api.get(`/api/import-export/export`, {
+        responseType: 'blob'
       });
 
-      if (response.status === 403 || response.status === 401) {
-        alert('Session expirée. Veuillez vous reconnecter.');
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
-        window.location.href = '/login';
-        return;
-      }
-
-      if (response.ok) {
-        const blob = await response.blob();
+      if (response.status === 200) {
+        const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -394,6 +381,15 @@ const Inventaire: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Erreur export Excel:', error);
+      
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        alert('Session expirée. Veuillez vous reconnecter.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        window.location.href = '/login';
+        return;
+      }
+      
       alert('❌ Erreur lors de l\'export Excel');
     } finally {
       setLoading(false);
@@ -414,22 +410,13 @@ const Inventaire: React.FC = () => {
         }
       });
 
-      const response = await fetch(`http://localhost:3000/api/import-export/export-resultats?${params}`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-        },
+      // ✅ CORRIGÉ : Utiliser l'instance api
+      const response = await api.get(`/api/import-export/export-resultats?${params}`, {
+        responseType: 'blob'
       });
 
-      if (response.status === 403 || response.status === 401) {
-        alert('Session expirée. Veuillez vous reconnecter.');
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
-        window.location.href = '/login';
-        return;
-      }
-
-      if (response.ok) {
-        const blob = await response.blob();
+      if (response.status === 200) {
+        const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -441,12 +428,21 @@ const Inventaire: React.FC = () => {
         
         alert('📊 Export des résultats de recherche réussi !');
       } else {
-        const errorText = await response.text();
+        const errorText = await response.data.text();
         console.error('❌ Erreur export résultats:', errorText);
         alert('❌ Erreur lors de l\'export des résultats');
       }
     } catch (error: any) {
       console.error('Erreur export résultats Excel:', error);
+      
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        alert('Session expirée. Veuillez vous reconnecter.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        window.location.href = '/login';
+        return;
+      }
+      
       alert('❌ Erreur lors de l\'export des résultats');
     } finally {
       setLoading(false);

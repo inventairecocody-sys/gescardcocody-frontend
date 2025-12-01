@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import Navbar from "../components/Navbar";
+import api from '../service/api'; // ✅ AJOUT IMPORT API
 
 interface UserProfile {
   id: number;
@@ -29,23 +30,22 @@ const Profil: React.FC = () => {
 
   const fetchProfile = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/profil', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // ✅ CORRIGÉ : Utiliser l'instance api
+      const response = await api.get('/api/profil');
 
-      if (!response.ok) {
-        throw new Error('Erreur lors de la récupération du profil');
-      }
-
-      const userData = await response.json();
+      const userData = response.data;
       setProfile(userData);
-    } catch (err) {
-      setError('Erreur lors du chargement du profil');
-      console.error(err);
+    } catch (err: any) {
+      console.error('❌ Erreur fetchProfile:', err);
+      
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setError('Session expirée. Veuillez vous reconnecter.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        setTimeout(() => navigate('/'), 2000);
+      } else {
+        setError('Erreur lors de la récupération du profil');
+      }
     } finally {
       setLoading(false);
     }
@@ -69,30 +69,33 @@ const Profil: React.FC = () => {
     setSuccess('');
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/profil/password', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword
-        }),
+      // ✅ CORRIGÉ : Utiliser l'instance api
+      const response = await api.put('/api/profil/password', {
+        currentPassword,
+        newPassword
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erreur lors du changement de mot de passe');
+      if (response.status === 200 || response.status === 201) {
+        setSuccess('✅ Mot de passe modifié avec succès !');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        throw new Error('Erreur lors du changement de mot de passe');
       }
-
-      setSuccess('✅ Mot de passe modifié avec succès !');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
     } catch (err: any) {
-      setError(`❌ ${err.message || 'Erreur lors du changement de mot de passe'}`);
+      console.error('❌ Erreur handleChangePassword:', err);
+      
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setError('Session expirée. Veuillez vous reconnecter.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        setTimeout(() => navigate('/'), 2000);
+      } else if (err.response?.data?.message) {
+        setError(`❌ ${err.response.data.message}`);
+      } else {
+        setError(`❌ ${err.message || 'Erreur lors du changement de mot de passe'}`);
+      }
     } finally {
       setChangingPassword(false);
     }
