@@ -1,11 +1,31 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import Navbar from "../components/Navbar";
 import TableCartesExcel from "../components/TableCartesExcel";
 import ImportModal from "../components/ImportModal";
 import cartesService from "../service/CartesService";
-import api from "../service/api";
+import api, { importExportApi } from "../service/api";
+import SiteDropdown from "../components/SiteDropdown";
 import type { Carte } from "../service/CartesService";
+
+interface CriteresRecherche {
+  nom: string;
+  prenom: string;
+  contact: string;
+  siteRetrait: string;
+  lieuNaissance: string;
+  dateNaissance: string;
+  rangement: string;
+}
+
+interface ImportStats {
+  imported: number;
+  updated: number;
+  skipped: number;
+  totalProcessed: number;
+  duplicates?: number;
+  errors?: number;
+}
 
 const Inventaire: React.FC = () => {
   const [resultats, setResultats] = useState<Carte[]>([]);
@@ -16,11 +36,15 @@ const Inventaire: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [importMode, setImportMode] = useState<'standard' | 'smart'>('standard');
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [exportProgress, setExportProgress] = useState(0);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const smartFileInputRef = useRef<HTMLInputElement>(null);
   
   // ✅ ÉTAT DES CRITÈRES DE RECHERCHE
-  const [criteres, setCriteres] = useState({
+  const [criteres, setCriteres] = useState<CriteresRecherche>({
     nom: "",
     prenom: "",
     contact: "",
@@ -37,6 +61,22 @@ const Inventaire: React.FC = () => {
   const canExportAll = ["Administrateur", "Superviseur"].includes(role);
   const canExportResults = ["Administrateur", "Superviseur"].includes(role);
   const canImportExcel = ["Administrateur", "Superviseur"].includes(role);
+
+  // ✅ CHARGER LE NOMBRE TOTAL DE CARTES
+  useEffect(() => {
+    const loadTotalRecords = async () => {
+      try {
+        const response = await importExportApi.getTotalCount();
+        setTotalRecords(response.data.count || 0);
+      } catch (error) {
+        console.error('Erreur chargement total:', error);
+      }
+    };
+    
+    if (canExportAll) {
+      loadTotalRecords();
+    }
+  }, [canExportAll]);
 
   // ✅ FONCTION DE VÉRIFICATION DU TOKEN
   const checkToken = (): boolean => {
@@ -105,7 +145,7 @@ const Inventaire: React.FC = () => {
     try {
       const params = new URLSearchParams();
       Object.entries(criteres).forEach(([key, value]) => {
-        if (value.trim()) params.append(key, value.trim());
+        if (value && value.toString().trim()) params.append(key, value.toString().trim());
       });
       
       params.append('page', page.toString());
@@ -217,13 +257,18 @@ const Inventaire: React.FC = () => {
   };
 
   // 📤 GESTION DU CLIC SUR "IMPORTER EXCEL"
-  const handleImportClick = () => {
+  const handleImportClick = (mode: 'standard' | 'smart' = 'standard') => {
     if (!checkToken()) return;
     
+    setImportMode(mode);
     const hideInstructions = localStorage.getItem('hideImportInstructions');
     
     if (hideInstructions === 'true') {
-      fileInputRef.current?.click();
+      if (mode === 'smart') {
+        smartFileInputRef.current?.click();
+      } else {
+        fileInputRef.current?.click();
+      }
     } else {
       setShowImportModal(true);
     }
@@ -286,6 +331,75 @@ const Inventaire: React.FC = () => {
     }
   };
 
+  // 📤 IMPORT INTELLIGENT (SMART SYNC) - NOUVEAU
+  const handleSmartImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!checkToken()) return;
+    
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      alert('❌ Veuillez sélectionner un fichier Excel (.xlsx ou .xls)');
+      return;
+    }
+
+    setImportLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // ✅ IMPORT INTELLIGENT
+      const response = await importExportApi.importSmartSync(formData);
+
+      const result = response.data;
+
+      if (response.status === 200 || response.status === 201) {
+        alert(`✅ Synchronisation intelligente réussie !
+        
+📊 Résultats :
+- Nouvelles cartes ajoutées : ${result.stats?.imported || 0}
+- Cartes mises à jour : ${result.stats?.updated || 0}
+- Cartes ignorées (doublons) : ${result.stats?.skipped || 0}
+- Total traité : ${result.stats?.totalProcessed || 0}
+        
+Règles appliquées :
+✅ Met à jour la DÉLIVRANCE si différente
+✅ Garde les CONTACTS existants
+✅ Garde la DATE de délivrance existante
+✅ Ajoute les nouvelles personnes`);
+        
+        // 📢 NOTIFIER LE DASHBOARD DU CHANGEMENT
+        await notifyDashboardRefreshEnhanced();
+        
+        handleRecherche(1);
+      } else {
+  alert('❌ Erreur lors de l\'import');
+}
+    } catch (error: any) {
+      console.error('Erreur import intelligent:', error);
+      
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        alert('Session expirée. Veuillez vous reconnecter.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        window.location.href = '/login';
+        return;
+      }
+      
+      if (error.response?.data?.error) {
+        alert(`❌ Erreur de synchronisation: ${error.response.data.error}`);
+      } else {
+        alert('❌ Erreur lors de l\'import intelligent');
+      }
+    } finally {
+      setImportLoading(false);
+      if (smartFileInputRef.current) {
+        smartFileInputRef.current.value = '';
+      }
+    }
+  };
+
   // 📤 IMPORT DEPUIS LE MODAL (VERSION CORRIGÉE AVEC SYNCHRO) - CORRIGÉ
   const handleImportFromModal = async (file: File) => {
     if (!checkToken()) return;
@@ -296,8 +410,12 @@ const Inventaire: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
 
+      const endpoint = importMode === 'smart' 
+        ? '/api/import-export/import/smart-sync' 
+        : '/api/import-export/import';
+
       // ✅ CORRIGÉ : Utiliser l'instance api
-      const response = await api.post('/api/import-export/import', formData, {
+      const response = await api.post(endpoint, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -306,7 +424,17 @@ const Inventaire: React.FC = () => {
       const result = response.data;
 
       if (response.status === 200 || response.status === 201) {
-        showImportResult(result.stats);
+        if (importMode === 'smart') {
+          alert(`✅ Synchronisation intelligente réussie !
+          
+📊 Résultats :
+- Nouvelles cartes ajoutées : ${result.stats?.imported || 0}
+- Cartes mises à jour : ${result.stats?.updated || 0}
+- Cartes ignorées (doublons) : ${result.stats?.skipped || 0}
+- Total traité : ${result.stats?.totalProcessed || 0}`);
+        } else {
+          showImportResult(result.stats);
+        }
         
         // 📢 NOTIFIER LE DASHBOARD DU CHANGEMENT
         await notifyDashboardRefreshEnhanced();
@@ -333,8 +461,11 @@ const Inventaire: React.FC = () => {
   };
 
   // 📊 FONCTION POUR AFFICHER LES RÉSULTATS
-  const showImportResult = (stats: any) => {
-    const { imported, duplicates, errors, totalProcessed } = stats;
+  const showImportResult = (stats: ImportStats) => {
+    const imported = stats?.imported || 0;
+    const duplicates = stats?.duplicates || 0;
+    const errors = stats?.errors || 0;
+    const totalProcessed = stats?.totalProcessed || 0;
     
     let message = '';
     let emoji = '✅';
@@ -352,17 +483,32 @@ const Inventaire: React.FC = () => {
     alert(`${emoji} ${message}`);
   };
 
-  // 📥 EXPORT EXCEL DE TOUTES LES CARTES - CORRIGÉ
+  // 📥 EXPORT EXCEL DE TOUTES LES CARTES - AMÉLIORÉ AVEC DÉTECTION AUTO
   const handleExportAllExcel = async () => {
     if (!checkToken()) return;
     
+    if (totalRecords > 5000) {
+      const confirmExport = window.confirm(
+        `⚠️ GROS VOLUME DÉTECTÉ (${totalRecords.toLocaleString()} cartes)\n\n` +
+        `Le backend Render (gratuit) peut avoir des difficultés avec ce volume.\n` +
+        `Voulez-vous :\n` +
+        `1. Exporter quand même (peut échouer ou être lent)\n` +
+        `2. Utiliser l'export des résultats de recherche (recommandé)`
+      );
+      
+      if (!confirmExport) return;
+    }
+    
     try {
       setLoading(true);
+      setExportProgress(0);
       
-      // ✅ CORRIGÉ : Utiliser l'instance api
-      const response = await api.get(`/api/import-export/export`, {
-        responseType: 'blob'
-      });
+      // ✅ Utiliser l'export streaming pour gros volumes
+      const response = totalRecords > 5000
+        ? await importExportApi.exportStream()
+        : await api.get('/api/import-export/export', {
+            responseType: 'blob'
+          });
 
       if (response.status === 200) {
         const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -375,7 +521,7 @@ const Inventaire: React.FC = () => {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
         
-        alert('📊 Export de TOUTES les cartes réussi !');
+        alert(`📊 Export de ${totalRecords.toLocaleString()} cartes réussi ! ${totalRecords > 5000 ? '(Mode streaming)' : ''}`);
       } else {
         alert('❌ Erreur lors de l\'export Excel');
       }
@@ -390,9 +536,19 @@ const Inventaire: React.FC = () => {
         return;
       }
       
-      alert('❌ Erreur lors de l\'export Excel');
+      if (error.response?.status === 500) {
+        alert(`❌ Erreur serveur lors de l'export\n\n` +
+              `Probablement dû au volume important de données (${totalRecords} cartes).\n` +
+              `Recommandation :\n` +
+              `1. Utilisez la recherche pour filtrer\n` +
+              `2. Exportez les résultats de recherche\n` +
+              `3. Contactez l'administrateur pour un export complet`);
+      } else {
+        alert('❌ Erreur lors de l\'export Excel');
+      }
     } finally {
       setLoading(false);
+      setExportProgress(0);
     }
   };
 
@@ -400,13 +556,18 @@ const Inventaire: React.FC = () => {
   const handleExportResultsExcel = async () => {
     if (!checkToken()) return;
     
+    if (resultats.length === 0) {
+      alert('❌ Aucun résultat à exporter. Veuillez d\'abord effectuer une recherche.');
+      return;
+    }
+    
     try {
       setLoading(true);
       
       const params = new URLSearchParams();
       Object.entries(criteres).forEach(([key, value]) => {
-        if (value && value.trim() !== '') {
-          params.append(key, value.trim());
+        if (value && value.toString().trim() !== '') {
+          params.append(key, value.toString().trim());
         }
       });
 
@@ -426,10 +587,8 @@ const Inventaire: React.FC = () => {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
         
-        alert('📊 Export des résultats de recherche réussi !');
+        alert(`📊 Export de ${resultats.length} résultat(s) réussi !`);
       } else {
-        const errorText = await response.data.text();
-        console.error('❌ Erreur export résultats:', errorText);
         alert('❌ Erreur lors de l\'export des résultats');
       }
     } catch (error: any) {
@@ -490,9 +649,47 @@ const Inventaire: React.FC = () => {
     handleRecherche(newPage);
   };
 
+  // 📊 AFFICHER L'INFO DU VOLUME
+  const renderVolumeInfo = () => {
+    if (totalRecords > 5000) {
+      return (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <span className="text-yellow-600 text-lg">⚠️</span>
+            <div>
+              <p className="text-yellow-800 font-semibold">
+                Volume important détecté : {totalRecords.toLocaleString()} cartes
+              </p>
+              <p className="text-yellow-700 text-sm mt-1">
+                Recommandation : Utilisez la recherche pour filtrer avant l'export
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar role={role} />
+      
+      {/* Inputs cachés pour les imports */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImportExcel}
+        accept=".xlsx,.xls"
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={smartFileInputRef}
+        onChange={handleSmartImport}
+        accept=".xlsx,.xls"
+        className="hidden"
+      />
       
       {/* 🎯 EN-TÊTE PROFESSIONNEL */}
       <div className="bg-white border-b border-gray-200 py-6 shadow-sm">
@@ -514,6 +711,9 @@ const Inventaire: React.FC = () => {
       </div>
 
       <div className="container mx-auto px-4 md:px-6 py-8">
+        {/* Avertissement volume */}
+        {canExportAll && renderVolumeInfo()}
+        
         {/* 🎛️ CARTE DES CRITÈRES DE RECHERCHE */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -574,17 +774,16 @@ const Inventaire: React.FC = () => {
               />
             </div>
 
-            {/* SITE DE RETRAIT */}
+            {/* SITE DE RETRAIT - NOUVEAU DROPDOWN */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                 <span className="text-[#F77F00]">🏢</span> Site de Retrait
               </label>
-              <input
-                type="text"
-                value={criteres.siteRetrait}
-                onChange={(e) => setCriteres({...criteres, siteRetrait: e.target.value})}
-                placeholder="Nom du site..."
-                className="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F77F00] focus:border-[#F77F00] transition-all duration-200"
+              <SiteDropdown
+                multiple={false}
+                selectedSites={criteres.siteRetrait}
+                onChange={(value) => setCriteres({...criteres, siteRetrait: value as string})}
+                placeholder="Sélectionner un site..."
               />
             </div>
 
@@ -666,56 +865,80 @@ const Inventaire: React.FC = () => {
             </motion.button>
             
             <div className="flex flex-wrap gap-3">
-              {/* 📤 IMPORT - ADMINISTRATEUR ET SUPERVISEUR SEULEMENT */}
+              {/* 📤 IMPORT STANDARD */}
               {(canImportExcel || role === "Administrateur") && (
-                <div className="relative">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleImportExcel}
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                  />
-                  <motion.button
-                    onClick={handleImportClick}
-                    disabled={importLoading}
-                    whileHover={{ scale: importLoading ? 1 : 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="px-4 py-2.5 bg-[#0077B6] text-white rounded-lg hover:bg-[#0056b3] disabled:opacity-50 font-semibold transition-all duration-200 shadow-sm flex items-center gap-2"
-                  >
-                    {importLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Import...
-                      </>
-                    ) : (
-                      <>
-                        <span>📤</span>
-                        Importer Excel
-                      </>
-                    )}
-                  </motion.button>
-                </div>
+                <motion.button
+                  onClick={() => handleImportClick('standard')}
+                  disabled={importLoading}
+                  whileHover={{ scale: importLoading ? 1 : 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="px-4 py-2.5 bg-[#0077B6] text-white rounded-lg hover:bg-[#0056b3] disabled:opacity-50 font-semibold transition-all duration-200 shadow-sm flex items-center gap-2"
+                >
+                  {importLoading && importMode === 'standard' ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Import...
+                    </>
+                  ) : (
+                    <>
+                      <span>📤</span>
+                      Import Standard
+                    </>
+                  )}
+                </motion.button>
               )}
 
-              {/* 📥 EXPORT EXCEL DE TOUTES LES CARTES - ADMINISTRATEUR ET SUPERVISEUR SEULEMENT */}
+              {/* 🔄 IMPORT INTELLIGENT */}
+              {(canImportExcel || role === "Administrateur") && (
+                <motion.button
+                  onClick={() => handleImportClick('smart')}
+                  disabled={importLoading}
+                  whileHover={{ scale: importLoading ? 1 : 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="px-4 py-2.5 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 font-semibold transition-all duration-200 shadow-sm flex items-center gap-2"
+                >
+                  {importLoading && importMode === 'smart' ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Synchronisation...
+                    </>
+                  ) : (
+                    <>
+                      <span>🔄</span>
+                      Import Intelligent
+                    </>
+                  )}
+                </motion.button>
+              )}
+
+              {/* 📥 EXPORT EXCEL DE TOUTES LES CARTES */}
               {(canExportAll || role === "Administrateur") && (
                 <motion.button
                   onClick={handleExportAllExcel}
-                  disabled={loading}
-                  whileHover={{ scale: loading ? 1 : 1.02 }}
+                  disabled={loading || exportProgress > 0}
+                  whileHover={{ scale: (loading || exportProgress > 0) ? 1 : 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="px-4 py-2.5 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] disabled:opacity-50 font-semibold transition-all duration-200 shadow-sm flex items-center gap-2"
+                  className="px-4 py-2.5 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] disabled:opacity-50 font-semibold transition-all duration-200 shadow-sm flex items-center gap-2 relative"
                 >
                   {loading ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                       Export...
                     </>
+                  ) : exportProgress > 0 ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      {exportProgress}%
+                    </>
                   ) : (
                     <>
                       <span>📥</span>
                       Exporter TOUT Excel
+                      {totalRecords > 0 && (
+                        <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full ml-1">
+                          {totalRecords > 1000 ? `${(totalRecords/1000).toFixed(1)}k` : totalRecords}
+                        </span>
+                      )}
                     </>
                   )}
                 </motion.button>
@@ -747,7 +970,7 @@ const Inventaire: React.FC = () => {
                 </div>
               </div>
               
-              {/* BOUTONS D'EXPORT DES RÉSULTATS - ADMINISTRATEUR ET SUPERVISEUR SEULEMENT */}
+              {/* BOUTONS D'EXPORT DES RÉSULTATS */}
               {(canExportResults || role === "Administrateur") && (
                 <div className="flex flex-wrap gap-3">
                   <motion.button
@@ -765,7 +988,7 @@ const Inventaire: React.FC = () => {
                     ) : (
                       <>
                         <span>📥</span>
-                        Exporter résultats
+                        Exporter résultats ({resultats.length})
                       </>
                     )}
                   </motion.button>
@@ -810,7 +1033,7 @@ const Inventaire: React.FC = () => {
               />
             </div>
 
-            {/* BOUTON SAUVEGARDER - ADMINISTRATEUR ET SUPERVISEUR SEULEMENT */}
+            {/* BOUTON SAUVEGARDER */}
             {hasModifications && (canModifyData || role === "Administrateur") && (
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
@@ -871,9 +1094,14 @@ const Inventaire: React.FC = () => {
       {/* ✅ MODAL D'IMPORT */}
       <ImportModal
         isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
+        onClose={() => {
+          setShowImportModal(false);
+          setImportMode('standard');
+        }}
         onFileSelect={handleImportFromModal}
         isImporting={importLoading}
+        mode={importMode}
+        onModeChange={setImportMode}
       />
     </div>
   );
