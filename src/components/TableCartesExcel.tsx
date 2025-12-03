@@ -46,22 +46,22 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
     }
   }, [cartes]);
 
-  // ✅ CONFIGURATION DES PERMISSIONS PAR RÔLE
+  // ✅ CONFIGURATION DES PERMISSIONS PAR RÔLE - EXPORT/IMPORT DÉSACTIVÉS
   const getPermissionsByRole = () => {
     const roleLower = role?.toLowerCase() || "";
     
     if (roleLower.includes("administrateur")) {
       return {
         canEditAll: true,
-        canExport: true,
-        canImport: true,
+        canExport: false,       // <-- FORCÉ À FALSE
+        canImport: false,       // <-- FORCÉ À FALSE
         canModify: true
       };
     } else if (roleLower.includes("superviseur")) {
       return {
         canEditAll: true,
-        canExport: true,
-        canImport: true,
+        canExport: false,       // <-- FORCÉ À FALSE
+        canImport: false,       // <-- FORCÉ À FALSE
         canModify: true
       };
     } else if (roleLower.includes("chef d'équipe") || roleLower.includes("chef d'equipe")) {
@@ -88,7 +88,12 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
     }
   };
 
-  const permissions = getPermissionsByRole();
+  // ✅ PERMISSIONS AVEC EXPORT/IMPORT FORCÉMENT DÉSACTIVÉS
+  const permissions = {
+    ...getPermissionsByRole(),
+    canExport: false,  // <-- FORCE À FALSE POUR TOUS
+    canImport: false   // <-- FORCE À FALSE POUR TOUS
+  };
 
   // ✅ COLONNES AVEC DESIGN HARMONISÉ
   const colonnes = [

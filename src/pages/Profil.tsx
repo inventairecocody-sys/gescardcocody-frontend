@@ -2,19 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import Navbar from "../components/Navbar";
-import api from '../service/api'; // ✅ AJOUT IMPORT API
-
-interface UserProfile {
-  id: number;
-  NomUtilisateur: string;
-  NomComplet: string;
-  Email: string;
-  Agence: string;
-  Role: string;
-}
+import { getProfil, changePassword, type Utilisateur } from '../service/utilisateursService'; // ✅ IMPORT DU SERVICE
 
 const Profil: React.FC = () => {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<Utilisateur | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -30,21 +21,31 @@ const Profil: React.FC = () => {
 
   const fetchProfile = async () => {
     try {
-      // ✅ CORRIGÉ : Utiliser l'instance api
-      const response = await api.get('/api/profil');
-
-      const userData = response.data;
+      console.log('🔍 Récupération du profil utilisateur...');
+      
+      // ✅ UTILISER LE SERVICE utilisateursService
+      const userData = await getProfil();
+      
+      console.log('📊 Données profil reçues:', userData);
+      
+      // ✅ ASSURER QUE LES DONNÉES SONT COMPLÈTES
+      if (!userData.NomComplet || !userData.Email) {
+        console.warn('⚠️ Données profil incomplètes:', userData);
+      }
+      
       setProfile(userData);
+      
     } catch (err: any) {
       console.error('❌ Erreur fetchProfile:', err);
       
-      if (err.response?.status === 401 || err.response?.status === 403) {
+      if (err.message.includes('Session expirée') || err.message.includes('401')) {
         setError('Session expirée. Veuillez vous reconnecter.');
         localStorage.removeItem('token');
         localStorage.removeItem('role');
+        localStorage.removeItem('NomUtilisateur');
         setTimeout(() => navigate('/'), 2000);
       } else {
-        setError('Erreur lors de la récupération du profil');
+        setError(`❌ ${err.message || 'Erreur lors de la récupération du profil'}`);
       }
     } finally {
       setLoading(false);
@@ -55,12 +56,12 @@ const Profil: React.FC = () => {
     e.preventDefault();
     
     if (newPassword !== confirmPassword) {
-      setError('Les mots de passe ne correspondent pas');
+      setError('❌ Les mots de passe ne correspondent pas');
       return;
     }
 
     if (newPassword.length < 6) {
-      setError('Le mot de passe doit contenir au moins 6 caractères');
+      setError('❌ Le mot de passe doit contenir au moins 6 caractères');
       return;
     }
 
@@ -69,30 +70,26 @@ const Profil: React.FC = () => {
     setSuccess('');
 
     try {
-      // ✅ CORRIGÉ : Utiliser l'instance api
-      const response = await api.put('/api/profil/password', {
-        currentPassword,
-        newPassword
-      });
-
-      if (response.status === 200 || response.status === 201) {
-        setSuccess('✅ Mot de passe modifié avec succès !');
+      // ✅ UTILISER LE SERVICE utilisateursService
+      const result = await changePassword(currentPassword, newPassword);
+      
+      if (result.success) {
+        setSuccess('✅ ' + result.message);
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } else {
-        throw new Error('Erreur lors du changement de mot de passe');
+        setError(result.message);
       }
     } catch (err: any) {
       console.error('❌ Erreur handleChangePassword:', err);
       
-      if (err.response?.status === 401 || err.response?.status === 403) {
+      if (err.message.includes('Session expirée') || err.message.includes('401')) {
         setError('Session expirée. Veuillez vous reconnecter.');
         localStorage.removeItem('token');
         localStorage.removeItem('role');
+        localStorage.removeItem('NomUtilisateur');
         setTimeout(() => navigate('/'), 2000);
-      } else if (err.response?.data?.message) {
-        setError(`❌ ${err.response.data.message}`);
       } else {
         setError(`❌ ${err.message || 'Erreur lors du changement de mot de passe'}`);
       }

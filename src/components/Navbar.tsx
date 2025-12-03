@@ -29,7 +29,6 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
 
   // ✅ CONFIGURATION DES ACCÈS PAR RÔLE
   const canAccessDashboard = ["Administrateur"].includes(userRole);
-  const canAccessJournal = ["Administrateur"].includes(userRole);
   const canAccessProfil = true; // Tous les rôles ont accès au profil
 
   return (
@@ -95,23 +94,6 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
                   <span className="flex items-center gap-2">
                     <span>📊</span>
                     <span>Tableau de Bord</span>
-                  </span>
-                </Link>
-              )}
-
-              {/* Journal - ADMINISTRATEUR SEULEMENT */}
-              {canAccessJournal && (
-                <Link
-                  to="/journal"
-                  className={`relative px-4 py-2 rounded-xl transition-all duration-300 font-semibold ${
-                    isActiveLink("/journal")
-                      ? "text-white bg-gradient-to-r from-[#F77F00] to-[#0077B6] shadow-lg"
-                      : "text-gray-700 hover:text-[#F77F00] hover:bg-orange-50"
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span>📖</span>
-                    <span>Journal</span>
                   </span>
                 </Link>
               )}
@@ -205,24 +187,6 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
                       <span className="flex items-center gap-3">
                         <span>📊</span>
                         <span>Tableau de Bord</span>
-                      </span>
-                    </Link>
-                  )}
-
-                  {/* Journal Mobile - ADMINISTRATEUR SEULEMENT */}
-                  {canAccessJournal && (
-                    <Link
-                      to="/journal"
-                      onClick={() => setIsMenuOpen(false)}
-                      className={`block px-4 py-3 mx-2 rounded-xl transition-all duration-300 font-semibold ${
-                        isActiveLink("/journal")
-                          ? "text-white bg-gradient-to-r from-[#F77F00] to-[#0077B6] shadow-lg"
-                          : "text-gray-700 hover:text-[#F77F00] hover:bg-orange-50"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <span>📖</span>
-                        <span>Journal</span>
                       </span>
                     </Link>
                   )}
