@@ -21,7 +21,6 @@ const SiteDropdown: React.FC<SiteDropdownProps> = ({
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [filteredSites, setFilteredSites] = useState<string[]>([]);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     loadSites();
@@ -40,48 +39,13 @@ const SiteDropdown: React.FC<SiteDropdownProps> = ({
 
   const loadSites = async () => {
     try {
-      setError('');
-      console.log('🔍 Chargement des sites pour tous les utilisateurs...');
-      
-      // ✅ CHANGEMENT ICI : Appeler l'endpoint public ou sans restriction de rôle
-      const response = await api.get('/api/sites/public');
-      
-      if (response.data.sites && Array.isArray(response.data.sites)) {
-        setSites(response.data.sites);
-        setFilteredSites(response.data.sites);
-        console.log(`✅ ${response.data.sites.length} sites chargés pour tous les utilisateurs`);
-      } else {
-        // Fallback: essayer l'ancien endpoint si le nouveau ne fonctionne pas
-        const fallbackResponse = await api.get('/api/import-export/sites');
-        setSites(fallbackResponse.data.sites || []);
-        setFilteredSites(fallbackResponse.data.sites || []);
-        console.log(`✅ ${fallbackResponse.data.sites?.length || 0} sites chargés (fallback)`);
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Erreur chargement sites:', error);
-      
-      // ✅ AJOUT : Utiliser des sites par défaut si l'API échoue
-      const defaultSites = [
-        "ABIDJAN NORD-COCODY",
-        "ABIDJAN SUD-PLATEAU",
-        "ABOBO",
-        "ADJAME",
-        "ATTECOUBE",
-        "BINGERVILLE",
-        "COCODY",
-        "KOUMASSI",
-        "MARCORY",
-        "PLATEAU",
-        "TREICHVILLE",
-        "YOPOUGON"
-      ];
-      
-      setSites(defaultSites);
-      setFilteredSites(defaultSites);
-      setError('Chargement API échoué, sites par défaut utilisés');
-      
-      console.log('⚠️ Utilisation des sites par défaut:', defaultSites.length, 'sites');
+      const response = await api.get('/api/import-export/sites');
+      setSites(response.data.sites || []);
+      setFilteredSites(response.data.sites || []);
+    } catch (error) {
+      console.error('Erreur chargement sites:', error);
+      setSites([]);
+      setFilteredSites([]);
     } finally {
       setLoading(false);
     }
@@ -123,9 +87,8 @@ const SiteDropdown: React.FC<SiteDropdownProps> = ({
   if (loading) {
     return (
       <div className={`relative ${className}`}>
-        <div className="w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-gray-100 animate-pulse flex items-center justify-between">
-          <span className="text-gray-500">Chargement des sites...</span>
-          <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-full px-3 py-2.5 border border-gray-300 rounded-lg bg-gray-100 animate-pulse">
+          Chargement des sites...
         </div>
       </div>
     );
@@ -133,13 +96,6 @@ const SiteDropdown: React.FC<SiteDropdownProps> = ({
 
   return (
     <div className={`relative w-full ${className}`}>
-      {/* Message d'erreur discret */}
-      {error && (
-        <div className="mb-1 text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded">
-          ⚠️ {error}
-        </div>
-      )}
-      
       {/* Champ de recherche avec dropdown */}
       <div className="relative">
         <div
@@ -189,13 +145,6 @@ const SiteDropdown: React.FC<SiteDropdownProps> = ({
             />
           )}
           
-          {/* Indicateur de nombre de sites */}
-          {!multiple && sites.length > 0 && (
-            <span className="absolute right-10 text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-              {sites.length} sites
-            </span>
-          )}
-          
           <button
             onClick={() => setIsOpen(!isOpen)}
             className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
@@ -218,44 +167,26 @@ const SiteDropdown: React.FC<SiteDropdownProps> = ({
             {/* En-tête du dropdown */}
             <div className="sticky top-0 bg-white border-b border-gray-200 px-3 py-2">
               <div className="flex justify-between items-center">
-                <div>
-                  <span className="text-sm text-gray-600 font-medium">
-                    {filteredSites.length} site{filteredSites.length !== 1 ? 's' : ''} disponible{filteredSites.length > 1 ? 's' : ''}
-                  </span>
-                  {error && (
-                    <span className="ml-2 text-xs text-yellow-600">(Données locales)</span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSearch('');
-                    }}
-                    className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 hover:bg-gray-100 rounded"
-                  >
-                    Effacer recherche
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsOpen(false);
-                      setSearch('');
-                    }}
-                    className="text-sm text-gray-500 hover:text-gray-700"
-                  >
-                    Fermer
-                  </button>
-                </div>
+                <span className="text-sm text-gray-600">
+                  {filteredSites.length} site{filteredSites.length !== 1 ? 's' : ''} disponible{filteredSites.length > 1 ? 's' : ''}
+                </span>
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    setSearch('');
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-sm"
+                >
+                  Fermer
+                </button>
               </div>
             </div>
             
             {/* Liste des sites */}
             <div className="py-1">
               {filteredSites.length === 0 ? (
-                <div className="px-3 py-4 text-gray-500 text-center">
-                  <div className="text-lg mb-1">🔍</div>
-                  <p className="font-medium">Aucun site trouvé</p>
-                  <p className="text-sm mt-1">Essayez avec d'autres termes</p>
+                <div className="px-3 py-3 text-gray-500 text-center">
+                  {search ? 'Aucun site trouvé pour cette recherche' : 'Aucun site disponible'}
                 </div>
               ) : (
                 filteredSites.map((site, index) => {
@@ -267,27 +198,27 @@ const SiteDropdown: React.FC<SiteDropdownProps> = ({
                     <div
                       key={index}
                       onClick={() => handleSiteSelect(site)}
-                      className={`px-3 py-3 cursor-pointer hover:bg-gray-50 transition-all duration-200 flex items-center justify-between border-b border-gray-100 last:border-b-0 ${
+                      className={`px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between ${
                         isSelected 
-                          ? 'bg-gradient-to-r from-blue-50 to-green-50 text-blue-700 border-l-4 border-[#F77F00]' 
+                          ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-500' 
                           : ''
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isSelected ? 'bg-[#F77F00] text-white' : 'bg-gray-100 text-gray-500'}`}>
-                          {isSelected ? '✓' : '🏢'}
-                        </div>
-                        <div>
-                          <span className={`font-medium ${isSelected ? 'text-[#F77F00]' : 'text-gray-800'}`}>
-                            {site}
-                          </span>
-                          {isSelected && (
-                            <div className="text-xs text-gray-500 mt-0.5">Cliquez pour désélectionner</div>
-                          )}
-                        </div>
+                      <div className="flex items-center gap-2">
+                        {multiple && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            readOnly
+                            className="h-4 w-4 text-blue-600 rounded"
+                          />
+                        )}
+                        <span className={isSelected ? 'font-semibold' : ''}>
+                          {site}
+                        </span>
                       </div>
-                      {isSelected && !multiple && (
-                        <div className="text-[#F77F00] font-bold text-lg">✓</div>
+                      {isSelected && (
+                        <span className="text-blue-600 font-bold">✓</span>
                       )}
                     </div>
                   );
@@ -297,28 +228,15 @@ const SiteDropdown: React.FC<SiteDropdownProps> = ({
             
             {/* Pour sélection multiple : bouton valider */}
             {multiple && (
-              <div className="sticky bottom-0 bg-white border-t border-gray-200 p-3">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-600">
-                    Sélection : {(selectedSites as string[]).length} site{(selectedSites as string[]).length !== 1 ? 's' : ''}
-                  </span>
-                  {(selectedSites as string[]).length > 0 && (
-                    <button
-                      onClick={() => onChange([])}
-                      className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded"
-                    >
-                      Tout effacer
-                    </button>
-                  )}
-                </div>
+              <div className="sticky bottom-0 bg-white border-t border-gray-200 p-2">
                 <button
                   onClick={() => {
                     setIsOpen(false);
                     setSearch('');
                   }}
-                  className="w-full py-2.5 bg-gradient-to-r from-[#F77F00] to-[#FF9E40] text-white rounded-lg hover:from-[#e46f00] hover:to-[#FF8C00] transition-all duration-300 font-medium shadow-sm hover:shadow"
+                  className="w-full py-2 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] transition-colors font-medium"
                 >
-                  Valider la sélection
+                  Valider ({(selectedSites as string[]).length})
                 </button>
               </div>
             )}
