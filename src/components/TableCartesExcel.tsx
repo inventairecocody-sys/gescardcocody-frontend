@@ -11,7 +11,6 @@ interface TableCartesExcelProps {
 
 // ✅ TYPE POUR LES CARTES AVEC TOUTES LES PROPRIÉTÉS
 type CarteComplete = Carte & {
-  // Propriétés en minuscules explicites
   nom?: string;
   prenoms?: string;
   contact?: string;
@@ -46,36 +45,36 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
     }
   }, [cartes]);
 
-  // ✅ CONFIGURATION DES PERMISSIONS PAR RÔLE - EXPORT/IMPORT DÉSACTIVÉS
+  // ✅ CONFIGURATION DES PERMISSIONS PAR RÔLE - IMPORT/EXPORT ACTIVÉS
   const getPermissionsByRole = () => {
     const roleLower = role?.toLowerCase() || "";
     
     if (roleLower.includes("administrateur")) {
       return {
         canEditAll: true,
-        canExport: false,       // <-- FORCÉ À FALSE
-        canImport: false,       // <-- FORCÉ À FALSE
+        canExport: true,       // <-- ACTIVÉ
+        canImport: true,       // <-- ACTIVÉ
         canModify: true
       };
     } else if (roleLower.includes("superviseur")) {
       return {
         canEditAll: true,
-        canExport: false,       // <-- FORCÉ À FALSE
-        canImport: false,       // <-- FORCÉ À FALSE
+        canExport: true,       // <-- ACTIVÉ
+        canImport: true,       // <-- ACTIVÉ
         canModify: true
       };
     } else if (roleLower.includes("chef d'équipe") || roleLower.includes("chef d'equipe")) {
       return {
         canEditAll: false,
-        canExport: false,
-        canImport: false,
+        canExport: true,       // <-- ACTIVÉ
+        canImport: false,      // <-- DÉSACTIVÉ
         canModify: false
       };
     } else if (roleLower.includes("opérateur") || roleLower.includes("operateur")) {
       return {
         canEditAll: false,
-        canExport: false,
-        canImport: false,
+        canExport: true,       // <-- ACTIVÉ
+        canImport: false,      // <-- DÉSACTIVÉ
         canModify: false
       };
     } else {
@@ -88,12 +87,8 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
     }
   };
 
-  // ✅ PERMISSIONS AVEC EXPORT/IMPORT FORCÉMENT DÉSACTIVÉS
-  const permissions = {
-    ...getPermissionsByRole(),
-    canExport: false,  // <-- FORCE À FALSE POUR TOUS
-    canImport: false   // <-- FORCE À FALSE POUR TOUS
-  };
+  // ✅ PERMISSIONS ACTIVÉES SELON RÔLE
+  const permissions = getPermissionsByRole();
 
   // ✅ COLONNES AVEC DESIGN HARMONISÉ
   const colonnes = [
@@ -167,9 +162,7 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
 
   // ✅ MISE À JOUR SIMULTANÉE DES DEUX FORMATS
   const updateBothFormats = (carte: CarteComplete, keyMaj: string, keyMin: string, value: any) => {
-    // Mettre à jour la version majuscule
     carte[keyMaj] = value;
-    // Mettre à jour la version minuscule
     carte[keyMin] = value;
   };
 
@@ -182,7 +175,6 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
     const updatedCartes = [...cartes] as CarteComplete[];
     const carteToUpdate = { 
       ...updatedCartes[rowIndex],
-      // 🔥 Assure que les deux formats d'ID sont présents
       ID: updatedCartes[rowIndex].ID || updatedCartes[rowIndex].id,
       id: updatedCartes[rowIndex].id || updatedCartes[rowIndex].ID
     };
@@ -315,6 +307,8 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
               <h3 className="text-lg font-bold">Tableau Excel des Cartes</h3>
               <p className="text-white/90 text-sm">
                 {cartes.length} carte{cartes.length > 1 ? 's' : ''} • Rôle: {role}
+                {permissions.canImport && " • 📤 Import activé"}
+                {permissions.canExport && " • 📥 Export activé"}
               </p>
             </div>
           </div>
@@ -492,7 +486,15 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
               Cellules verrouillées
             </span>
           </div>
-          <span>{cartes.length} carte{cartes.length > 1 ? 's' : ''}</span>
+          <div className="flex items-center gap-2">
+            <span>{cartes.length} carte{cartes.length > 1 ? 's' : ''}</span>
+            {permissions.canImport && (
+              <span className="text-green-600 text-xs">📤 Import autorisé</span>
+            )}
+            {permissions.canExport && (
+              <span className="text-blue-600 text-xs">📥 Export autorisé</span>
+            )}
+          </div>
         </div>
       </div>
     </div>

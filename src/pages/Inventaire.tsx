@@ -21,6 +21,8 @@ interface CriteresRecherche {
 const Inventaire: React.FC = () => {
   const [resultats, setResultats] = useState<Carte[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   const [hasModifications, setHasModifications] = useState(false);
   const [totalResultats, setTotalResultats] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -41,8 +43,54 @@ const Inventaire: React.FC = () => {
 
   const role = localStorage.getItem("role") || "";
 
-  // ✅ CONFIGURATION DES PERMISSIONS - TOUT DÉSACTIVÉ
-  const canModifyData = false; // Désactivé pour tous
+  // ✅ CONFIGURATION DES PERMISSIONS PAR RÔLE
+  const getPermissionsByRole = () => {
+    const roleLower = role.toLowerCase();
+    
+    if (roleLower.includes("administrateur")) {
+      return {
+        canModifyData: true,
+        canImport: true,
+        canExport: true,
+        canExportAll: true,
+        canSmartSync: true
+      };
+    } else if (roleLower.includes("superviseur")) {
+      return {
+        canModifyData: true,
+        canImport: true,
+        canExport: true,
+        canExportAll: true,
+        canSmartSync: true
+      };
+    } else if (roleLower.includes("chef d'équipe") || roleLower.includes("chef d'equipe")) {
+      return {
+        canModifyData: false,
+        canImport: false,
+        canExport: true,
+        canExportAll: false,
+        canSmartSync: false
+      };
+    } else if (roleLower.includes("opérateur") || roleLower.includes("operateur")) {
+      return {
+        canModifyData: false,
+        canImport: false,
+        canExport: true,
+        canExportAll: false,
+        canSmartSync: false
+      };
+    } else {
+      return {
+        canModifyData: false,
+        canImport: false,
+        canExport: false,
+        canExportAll: false,
+        canSmartSync: false
+      };
+    }
+  };
+
+  const permissions = getPermissionsByRole();
 
   // ✅ FONCTION DE VÉRIFICATION DU TOKEN
   const checkToken = (): boolean => {
@@ -62,15 +110,12 @@ const Inventaire: React.FC = () => {
     console.log('📢 Notification avancée du Dashboard...');
     
     try {
-      // 1. D'abord forcer le recalcul des statistiques
       await cartesService.forceRefreshAndGetStats();
       console.log('✅ Statistiques recalculées avec succès');
     } catch (error: any) {
       console.warn('⚠️ Recalcul des statistiques échoué, continuation...');
     }
     
-    // 2. Ensuite notifier le Dashboard
-    // Événement personnalisé (même onglet)
     const refreshEvent = new CustomEvent('dashboardRefreshNeeded', {
       detail: { 
         force: true, 
@@ -80,11 +125,9 @@ const Inventaire: React.FC = () => {
     });
     window.dispatchEvent(refreshEvent);
     
-    // localStorage (entre onglets)
     localStorage.setItem('lastDataUpdate', Date.now().toString());
     localStorage.setItem('forceStatsRefresh', 'true');
     
-    // BroadcastChannel (entre onglets moderne)
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         const channel = new BroadcastChannel('dashboard_updates');
@@ -103,7 +146,7 @@ const Inventaire: React.FC = () => {
     console.log('✅ Notification du Dashboard terminée');
   };
 
-  // 🔍 RECHERCHE MULTICRITÈRES AVEC PAGINATION - CORRIGÉE
+  // 🔍 RECHERCHE MULTICRITÈRES AVEC PAGINATION
   const handleRecherche = async (page: number = 1) => {
     if (!checkToken()) return;
     
@@ -117,7 +160,6 @@ const Inventaire: React.FC = () => {
       params.append('page', page.toString());
       params.append('limit', '50');
 
-      // ✅ CORRIGÉ : Utiliser l'instance api au lieu de fetch
       const response = await api.get(`/api/inventaire/recherche?${params}`);
 
       const data = response.data;
@@ -125,7 +167,7 @@ const Inventaire: React.FC = () => {
       setTotalResultats(data.total);
       setCurrentPage(data.page);
       setTotalPages(data.totalPages);
-      setHasModifications(false); // Réinitialiser les modifications après une nouvelle recherche
+      setHasModifications(false);
       
     } catch (error: any) {
       console.error("❌ Erreur recherche:", error);
@@ -148,14 +190,14 @@ const Inventaire: React.FC = () => {
     }
   };
 
-  // 💾 FONCTION DE SAUVEGARDE CORRIGÉE - VERSION ULTIME
+  // 💾 FONCTION DE SAUVEGARDE CORRIGÉE
   const handleSaveModifications = async () => {
     if (!checkToken()) return;
     
     try {
       console.log('💾 Début de la sauvegarde des modifications...');
       
-      // Compter les cartes modifiées pour le debug
+      // Compter les cartes modifiées
       const cartesAvecDelivrance = resultats.filter(carte => 
         carte.DELIVRANCE && carte.DELIVRANCE.toString().trim() !== ''
       );
@@ -165,13 +207,11 @@ const Inventaire: React.FC = () => {
       const cartesValides = resultats.filter(carte => {
         const id = carte.ID;
         
-        // Vérification type-safe
         if (id === null || id === undefined) {
           console.warn('⚠️ Carte ignorée (ID null/undefined):', { nom: carte.NOM });
           return false;
         }
         
-        // Convertir en string pour les comparaisons
         const idString = id.toString();
         const idNumber = Number(id);
         
@@ -222,10 +262,198 @@ const Inventaire: React.FC = () => {
     }
   };
 
-  // 📤 IMPORT DEPUIS LE MODAL - DÉSACTIVÉ
-  const handleImportFromModal = () => {
-    alert('🚫 Fonction d\'import désactivée. Contactez l\'administrateur.');
-    return;
+  // 📤 IMPORT DEPUIS LE MODAL - ACTIVÉ
+  const handleImportFromModal = async (file: File) => {
+    if (!checkToken()) return;
+    
+    setImportLoading(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const endpoint = importMode === 'smart' 
+        ? '/api/import-export/import/smart-sync'
+        : '/api/import-export/import';
+      
+      const response = await api.post(endpoint, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      if (response.data.success) {
+        const stats = response.data.stats || {};
+        alert(`✅ Import ${importMode === 'smart' ? 'intelligent' : 'standard'} réussi !\n` +
+              `📊 Statistiques:\n` +
+              `• ${stats.imported || 0} cartes importées\n` +
+              `• ${stats.updated || 0} cartes mises à jour\n` +
+              `• ${stats.duplicates || 0} doublons ignorés\n` +
+              `• ${stats.errors || 0} erreurs`);
+        
+        // Recharger les résultats si recherche active
+        if (resultats.length > 0) {
+          handleRecherche(currentPage);
+        }
+        
+        // Notifier le dashboard
+        await notifyDashboardRefreshEnhanced();
+        
+        // Fermer le modal
+        setShowImportModal(false);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Erreur import:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Erreur inconnue';
+      alert(`❌ Erreur lors de l'import: ${errorMessage}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  // 📥 EXPORT DES RÉSULTATS DE RECHERCHE
+  const handleExportResults = async () => {
+    if (!checkToken() || !permissions.canExport) return;
+    
+    setExportLoading(true);
+    
+    try {
+      // Vérifier si des critères sont actifs
+      const hasActiveFilters = Object.values(criteres).some(value => 
+        value && value.toString().trim() !== ''
+      );
+      
+      let filename = 'toutes-les-cartes.xlsx';
+      
+      if (hasActiveFilters && resultats.length > 0) {
+        // Exporter avec les critères de recherche actuels
+        const params = new URLSearchParams();
+        Object.entries(criteres).forEach(([key, value]) => {
+          if (value && value.toString().trim()) {
+            params.append(key, value.toString().trim());
+          }
+        });
+        
+        const response = await api.get(`/api/import-export/export-resultats?${params}`, {
+          responseType: 'blob'
+        });
+        
+        filename = `resultats-recherche-${new Date().toISOString().split('T')[0]}.xlsx`;
+        
+        // Télécharger le fichier
+        const url = window.URL.createObjectURL(response.data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        alert(`✅ Export des résultats terminé !\n📁 Fichier: ${filename}\n📊 ${resultats.length} cartes exportées`);
+      } else {
+        // Exporter toutes les cartes
+        const response = await api.get('/api/import-export/export', {
+          responseType: 'blob'
+        });
+        
+        // Télécharger le fichier
+        const url = window.URL.createObjectURL(response.data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        alert('✅ Export de toutes les cartes terminé !');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Erreur export:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Erreur inconnue';
+      alert(`❌ Erreur lors de l'export: ${errorMessage}`);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  // 📥 TÉLÉCHARGER LE TEMPLATE D'IMPORT
+  const handleDownloadTemplate = async () => {
+    if (!checkToken()) return;
+    
+    try {
+      const response = await api.get('/api/import-export/template', {
+        responseType: 'blob'
+      });
+      
+      // Télécharger le fichier
+      const url = window.URL.createObjectURL(response.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template-import-cartes.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      alert('✅ Template téléchargé !');
+    } catch (error: any) {
+      console.error('❌ Erreur téléchargement template:', error);
+      alert('❌ Erreur lors du téléchargement du template');
+    }
+  };
+
+  // 📥 EXPORT AVEC FILTRES AVANCÉS
+  const handleExportWithFilters = async () => {
+    if (!checkToken() || !permissions.canExport) return;
+    
+    // Ouvrir un modal pour sélectionner les filtres
+    const selectedSites = window.prompt(
+      "Entrez les sites à exporter (séparés par des virgules) :\nLaissez vide pour tous les sites.",
+      ""
+    );
+    
+    if (selectedSites === null) return; // Annulé
+    
+    const sites = selectedSites 
+      ? selectedSites.split(',').map(s => s.trim()).filter(s => s)
+      : [];
+    
+    setExportLoading(true);
+    
+    try {
+      const filters = {
+        sites: sites.length > 0 ? sites : undefined
+      };
+      
+      const response = await api.post('/api/import-export/export/filtered', 
+        { filters },
+        { responseType: 'blob' }
+      );
+      
+      const filename = `cartes-filtrees-${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Télécharger le fichier
+      const url = window.URL.createObjectURL(response.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      alert(`✅ Export filtré terminé !\n📁 Fichier: ${filename}`);
+      
+    } catch (error: any) {
+      console.error('❌ Erreur export filtré:', error);
+      alert('❌ Erreur lors de l\'export filtré');
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   const handleUpdateResultats = (nouvellesCartes: Carte[]) => {
@@ -353,7 +581,7 @@ const Inventaire: React.FC = () => {
               />
             </div>
 
-            {/* SITE DE RETRAIT - NOUVEAU DROPDOWN */}
+            {/* SITE DE RETRAIT */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                 <span className="text-[#F77F00]">🏢</span> Site de Retrait
@@ -431,7 +659,7 @@ const Inventaire: React.FC = () => {
             </div>
           </div>
 
-          {/* BOUTONS ACTION - EXPORT/IMPORT DÉSACTIVÉS */}
+          {/* BOUTONS ACTION - IMPORT/EXPORT ACTIVÉS */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-4 border-t border-gray-200">
             <motion.button
               onClick={handleReset}
@@ -443,9 +671,80 @@ const Inventaire: React.FC = () => {
               Réinitialiser
             </motion.button>
             
-            {/* BOUTONS D'IMPORT/EXPORT RETIRÉS */}
+            {/* BOUTONS D'IMPORT/EXPORT ACTIVÉS */}
             <div className="flex flex-wrap gap-3">
-              {/* Espace vide - boutons supprimés */}
+              {/* BOUTON IMPORT */}
+              {permissions.canImport && (
+                <motion.button
+                  onClick={() => setShowImportModal(true)}
+                  disabled={importLoading}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="px-4 py-2.5 bg-[#0077B6] text-white rounded-lg hover:bg-[#005a8c] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 font-medium"
+                >
+                  {importLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Import...
+                    </>
+                  ) : (
+                    <>
+                      <span>📤</span>
+                      Importer
+                    </>
+                  )}
+                </motion.button>
+              )}
+              
+              {/* BOUTON EXPORT RÉSULTATS */}
+              {permissions.canExport && resultats.length > 0 && (
+                <motion.button
+                  onClick={handleExportResults}
+                  disabled={exportLoading}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="px-4 py-2.5 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 font-medium"
+                >
+                  {exportLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Export...
+                    </>
+                  ) : (
+                    <>
+                      <span>📥</span>
+                      Exporter résultats
+                    </>
+                  )}
+                </motion.button>
+              )}
+              
+              {/* BOUTON EXPORT FILTRÉ */}
+              {permissions.canExportAll && (
+                <motion.button
+                  onClick={handleExportWithFilters}
+                  disabled={exportLoading}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="px-4 py-2.5 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 font-medium"
+                >
+                  <span>🎛️</span>
+                  Export filtré
+                </motion.button>
+              )}
+              
+              {/* BOUTON TEMPLATE */}
+              {permissions.canImport && (
+                <motion.button
+                  onClick={handleDownloadTemplate}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="px-4 py-2.5 text-[#0077B6] bg-white border border-[#0077B6] rounded-lg hover:bg-blue-50 transition-all duration-200 flex items-center gap-2 font-medium"
+                >
+                  <span>📋</span>
+                  Template
+                </motion.button>
+              )}
             </div>
           </div>
         </motion.div>
@@ -473,7 +772,28 @@ const Inventaire: React.FC = () => {
                 </div>
               </div>
               
-              {/* BOUTONS D'EXPORT DES RÉSULTATS - RETIRÉS */}
+              {/* BOUTON EXPORT RAPIDE */}
+              {permissions.canExport && (
+                <motion.button
+                  onClick={handleExportResults}
+                  disabled={exportLoading}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="px-4 py-2.5 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 font-medium"
+                >
+                  {exportLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Export...
+                    </>
+                  ) : (
+                    <>
+                      <span>📥</span>
+                      Exporter {resultats.length} résultats
+                    </>
+                  )}
+                </motion.button>
+              )}
             </div>
 
             {/* ✅ PAGINATION */}
@@ -501,6 +821,13 @@ const Inventaire: React.FC = () => {
                   →
                 </motion.button>
               </div>
+              
+              {/* AFFICHAGE DU RÔLE ET PERMISSIONS */}
+              <div className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                {permissions.canModifyData ? '✏️ Mode édition' : '👀 Mode consultation'}
+                {permissions.canImport && ' • 📤 Import'}
+                {permissions.canExport && ' • 📥 Export'}
+              </div>
             </div>
 
             {/* TABLEAU DES RÉSULTATS */}
@@ -509,12 +836,12 @@ const Inventaire: React.FC = () => {
                 cartes={resultats}
                 role={role}
                 onUpdateCartes={handleUpdateResultats}
-                canEdit={canModifyData}
+                canEdit={permissions.canModifyData}
               />
             </div>
 
             {/* BOUTON SAUVEGARDER */}
-            {hasModifications && canModifyData && (
+            {hasModifications && permissions.canModifyData && (
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -550,6 +877,45 @@ const Inventaire: React.FC = () => {
             <p className="text-gray-600 max-w-md mx-auto">
               Utilisez les critères de recherche ci-dessus pour trouver des cartes spécifiques.
             </p>
+            
+            {/* BOUTONS D'IMPORT/EXPORT QUAND AUCUN RÉSULTAT */}
+            {(permissions.canImport || permissions.canExportAll) && (
+              <div className="flex flex-wrap justify-center gap-3 mt-6">
+                {permissions.canImport && (
+                  <motion.button
+                    onClick={() => setShowImportModal(true)}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="px-4 py-2 bg-[#0077B6] text-white rounded-lg hover:bg-[#005a8c] transition-all duration-200 flex items-center gap-2"
+                  >
+                    <span>📤</span>
+                    Importer des cartes
+                  </motion.button>
+                )}
+                
+                {permissions.canExportAll && (
+                  <motion.button
+                    onClick={handleExportResults}
+                    disabled={exportLoading}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="px-4 py-2 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 transition-all duration-200 flex items-center gap-2"
+                  >
+                    {exportLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Export...
+                      </>
+                    ) : (
+                      <>
+                        <span>📥</span>
+                        Exporter toutes les cartes
+                      </>
+                    )}
+                  </motion.button>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -571,7 +937,7 @@ const Inventaire: React.FC = () => {
         )}
       </div>
 
-      {/* ✅ MODAL D'IMPORT - NE S'AFFICHE PLUS */}
+      {/* ✅ MODAL D'IMPORT - ACTIVÉ */}
       <ImportModal
         isOpen={showImportModal}
         onClose={() => {
@@ -579,7 +945,7 @@ const Inventaire: React.FC = () => {
           setImportMode('standard');
         }}
         onFileSelect={handleImportFromModal}
-        isImporting={false}
+        isImporting={importLoading}
         mode={importMode}
         onModeChange={setImportMode}
       />
