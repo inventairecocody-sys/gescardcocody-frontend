@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File) => Promise<void> | void;
   isImporting: boolean;
   mode?: 'standard' | 'smart';
   onModeChange?: (mode: 'standard' | 'smart') => void;
@@ -23,16 +23,20 @@ const ImportModal: React.FC<ImportModalProps> = ({
     localStorage.getItem('hideImportInstructions') === 'true'
   );
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const validateFile = (selectedFile: File): boolean => {
-    // Vérifier le type de fichier
-    const isValidType = selectedFile.name.endsWith('.xlsx') || 
-                       selectedFile.name.endsWith('.xls') ||
-                       selectedFile.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-                       selectedFile.type === 'application/vnd.ms-excel';
+    // Réinitialiser les erreurs
+    setValidationError(null);
     
-    if (!isValidType) {
-      setValidationError('❌ Veuillez sélectionner un fichier Excel (.xlsx ou .xls)');
+    // Vérifier le type de fichier
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const hasValidExtension = validExtensions.some(ext => 
+      selectedFile.name.toLowerCase().endsWith(ext)
+    );
+    
+    if (!hasValidExtension) {
+      setValidationError('❌ Format non supporté. Utilisez .xlsx, .xls ou .csv');
       return false;
     }
 
@@ -44,18 +48,12 @@ const ImportModal: React.FC<ImportModalProps> = ({
       return false;
     }
 
-    // Vérifier les entêtes (noms de colonnes requis)
-    const validExtensions = ['.xlsx', '.xls'];
-    const hasValidExtension = validExtensions.some(ext => 
-      selectedFile.name.toLowerCase().endsWith(ext)
-    );
-    
-    if (!hasValidExtension) {
-      setValidationError('❌ Format non supporté. Utilisez .xlsx ou .xls');
+    // Vérifier si le fichier est vide
+    if (selectedFile.size === 0) {
+      setValidationError('❌ Le fichier est vide');
       return false;
     }
 
-    setValidationError(null);
     return true;
   };
 
@@ -70,11 +68,16 @@ const ImportModal: React.FC<ImportModalProps> = ({
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (file) {
-      onFileSelect(file);
-      if (hideInstructions) {
-        localStorage.setItem('hideImportInstructions', 'true');
+      try {
+        await onFileSelect(file);
+        if (hideInstructions) {
+          localStorage.setItem('hideImportInstructions', 'true');
+        }
+      } catch (error) {
+        console.error('❌ Erreur lors de l\'import:', error);
+        // Ne pas fermer le modal en cas d'erreur
       }
     }
   };
@@ -82,6 +85,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
   const handleClose = () => {
     setFile(null);
     setValidationError(null);
+    setIsDragging(false);
     onClose();
   };
 
@@ -93,18 +97,54 @@ const ImportModal: React.FC<ImportModalProps> = ({
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsDragging(false);
     
     const droppedFile = e.dataTransfer.files?.[0];
     if (droppedFile) {
       if (validateFile(droppedFile)) {
         setFile(droppedFile);
+      } else {
+        setFile(null);
       }
     }
+  };
+
+  // Fonction pour formater la taille du fichier
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Obtenir l'icône selon le mode
+  const getModeIcon = () => {
+    return mode === 'smart' ? '🔄' : '📤';
+  };
+
+  // Obtenir le titre selon le mode
+  const getModeTitle = () => {
+    return mode === 'smart' ? 'Synchronisation Intelligente' : 'Importation Standard';
+  };
+
+  // Obtenir la description selon le mode
+  const getModeDescription = () => {
+    return mode === 'smart' 
+      ? 'Synchronise les données au lieu de créer des doublons' 
+      : 'Ajoute de nouvelles cartes au système';
   };
 
   if (!isOpen) return null;
@@ -133,12 +173,12 @@ const ImportModal: React.FC<ImportModalProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                  <span className="text-xl">📤</span>
+                  <span className="text-xl">{getModeIcon()}</span>
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">Importation Excel</h2>
+                  <h2 className="text-lg font-bold">{getModeTitle()}</h2>
                   <p className="text-white/90 text-sm">
-                    {mode === 'smart' ? 'Synchronisation Intelligente' : 'Importation Standard'}
+                    {getModeDescription()}
                   </p>
                 </div>
               </div>
@@ -146,6 +186,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
                 onClick={handleClose}
                 disabled={isImporting}
                 className="w-8 h-8 rounded-lg hover:bg-white/20 flex items-center justify-center transition-colors disabled:opacity-50"
+                aria-label="Fermer"
               >
                 ✕
               </button>
@@ -162,33 +203,31 @@ const ImportModal: React.FC<ImportModalProps> = ({
                   <button
                     onClick={() => onModeChange('standard')}
                     disabled={isImporting}
-                    className={`p-3 border rounded-lg transition-all ${
+                    className={`p-3 border rounded-lg transition-all flex flex-col items-center justify-center ${
                       mode === 'standard'
                         ? 'border-[#0077B6] bg-blue-50 text-[#0077B6] ring-2 ring-blue-100'
                         : 'border-gray-300 hover:border-gray-400 text-gray-700'
                     } ${isImporting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    aria-pressed={mode === 'standard'}
                   >
-                    <div className="text-center">
-                      <div className="text-lg mb-1">📤</div>
-                      <p className="font-medium">Standard</p>
-                      <p className="text-xs mt-1">Ajoute seulement</p>
-                    </div>
+                    <div className="text-lg mb-1">📤</div>
+                    <p className="font-medium">Standard</p>
+                    <p className="text-xs mt-1 opacity-75">Ajoute seulement</p>
                   </button>
                   
                   <button
                     onClick={() => onModeChange('smart')}
                     disabled={isImporting}
-                    className={`p-3 border rounded-lg transition-all ${
+                    className={`p-3 border rounded-lg transition-all flex flex-col items-center justify-center ${
                       mode === 'smart'
                         ? 'border-[#2E8B57] bg-green-50 text-[#2E8B57] ring-2 ring-green-100'
                         : 'border-gray-300 hover:border-gray-400 text-gray-700'
                     } ${isImporting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    aria-pressed={mode === 'smart'}
                   >
-                    <div className="text-center">
-                      <div className="text-lg mb-1">🔄</div>
-                      <p className="font-medium">Intelligent</p>
-                      <p className="text-xs mt-1">Synchronise</p>
-                    </div>
+                    <div className="text-lg mb-1">🔄</div>
+                    <p className="font-medium">Intelligent</p>
+                    <p className="text-xs mt-1 opacity-75">Synchronise</p>
                   </button>
                 </div>
               </div>
@@ -200,31 +239,28 @@ const ImportModal: React.FC<ImportModalProps> = ({
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <h3 className="font-bold text-green-800 mb-2 flex items-center gap-2">
                     <span>🔄</span>
-                    Synchronisation Intelligente
+                    Avantages de la synchronisation
                   </h3>
-                  <p className="text-green-700 text-sm mb-3">
-                    Synchronise les données au lieu de créer des doublons :
-                  </p>
                   <ul className="text-green-700 text-sm space-y-1 pl-1">
                     <li className="flex items-start gap-2">
-                      <span className="text-green-600 mt-0.5">✓</span>
+                      <span className="text-green-600 mt-0.5 shrink-0">✓</span>
                       <span>Met à jour la <strong className="font-bold">DÉLIVRANCE</strong> si différente</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-green-600 mt-0.5">✓</span>
-                      <span>Garde les <strong className="font-bold">CONTACTS</strong> existants</span>
+                      <span className="text-green-600 mt-0.5 shrink-0">✓</span>
+                      <span>Conserve les <strong className="font-bold">CONTACTS</strong> existants</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-green-600 mt-0.5">✓</span>
-                      <span>Garde la <strong className="font-bold">DATE</strong> de délivrance existante</span>
+                      <span className="text-green-600 mt-0.5 shrink-0">✓</span>
+                      <span>Conserve la <strong className="font-bold">DATE</strong> de délivrance existante</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-green-600 mt-0.5">✓</span>
+                      <span className="text-green-600 mt-0.5 shrink-0">✓</span>
                       <span>Ajoute les nouvelles personnes</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-green-600 mt-0.5">✓</span>
-                      <span>Ignorer les doublons exacts</span>
+                      <span className="text-green-600 mt-0.5 shrink-0">✓</span>
+                      <span>Ignore les doublons exacts</span>
                     </li>
                   </ul>
                 </div>
@@ -232,23 +268,23 @@ const ImportModal: React.FC<ImportModalProps> = ({
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
                     <span>📤</span>
-                    Importation Standard
+                    Caractéristiques de l'import standard
                   </h3>
                   <ul className="text-blue-700 text-sm space-y-1 pl-1">
                     <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-0.5">✓</span>
+                      <span className="text-blue-600 mt-0.5 shrink-0">✓</span>
                       <span>Ajoute de nouvelles cartes</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-0.5">✓</span>
+                      <span className="text-blue-600 mt-0.5 shrink-0">✓</span>
                       <span>Ignore les doublons existants</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-0.5">✓</span>
+                      <span className="text-blue-600 mt-0.5 shrink-0">✓</span>
                       <span>Valide les en-têtes requis (NOM, PRENOMS)</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-0.5">✓</span>
+                      <span className="text-blue-600 mt-0.5 shrink-0">✓</span>
                       <span>Formate automatiquement les dates et contacts</span>
                     </li>
                   </ul>
@@ -262,38 +298,50 @@ const ImportModal: React.FC<ImportModalProps> = ({
                 Sélectionnez un fichier Excel :
               </label>
               <div 
-                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer bg-gray-50 ${
-                  file 
-                    ? 'border-green-500 bg-green-50/30' 
-                    : 'border-gray-300 hover:border-[#F77F00]'
+                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+                  isDragging 
+                    ? 'border-[#F77F00] bg-orange-50/50' 
+                    : file 
+                      ? 'border-green-500 bg-green-50/30' 
+                      : 'border-gray-300 bg-gray-50 hover:border-[#F77F00]'
                 }`}
                 onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
+                onClick={() => document.getElementById('file-input')?.click()}
+                role="button"
+                tabIndex={0}
+                aria-label="Zone de dépôt de fichier"
               >
                 <input
                   type="file"
                   id="file-input"
                   onChange={handleFileSelect}
-                  accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                  accept=".xlsx,.xls,.csv"
                   className="hidden"
                   disabled={isImporting}
+                  aria-label="Sélectionner un fichier Excel"
                 />
-                <label htmlFor="file-input" className={`cursor-pointer ${isImporting ? 'opacity-50' : ''}`}>
+                <div className={`${isImporting ? 'opacity-50' : ''}`}>
                   <div className="text-3xl mb-3 text-gray-400">📄</div>
-                  <p className="text-gray-600 mb-1">
-                    {file ? file.name : 'Cliquez ou glissez-déposez un fichier'}
+                  <p className="text-gray-600 mb-1 font-medium">
+                    {file ? file.name : isDragging ? 'Déposez le fichier ici' : 'Cliquez ou glissez-déposez un fichier'}
                   </p>
                   <p className="text-gray-500 text-sm mb-3">
-                    Formats acceptés : .xlsx, .xls (max 50MB)
+                    Formats acceptés : .xlsx, .xls, .csv (max 50MB)
                   </p>
                   <button 
                     type="button"
-                    className="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm disabled:opacity-50"
+                    className="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={isImporting}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      document.getElementById('file-input')?.click();
+                    }}
                   >
                     Parcourir les fichiers
                   </button>
-                </label>
+                </div>
               </div>
               
               {/* Informations fichier */}
@@ -307,16 +355,20 @@ const ImportModal: React.FC<ImportModalProps> = ({
                     <div className="flex items-center gap-3">
                       <span className="text-green-600 text-lg">✓</span>
                       <div>
-                        <p className="font-medium text-green-800">{file.name}</p>
+                        <p className="font-medium text-green-800 truncate max-w-[200px]">{file.name}</p>
                         <p className="text-green-700 text-sm">
-                          Taille : {(file.size / 1024 / 1024).toFixed(2)} MB
+                          Taille : {formatFileSize(file.size)}
                         </p>
                       </div>
                     </div>
                     {!isImporting && (
                       <button
-                        onClick={() => setFile(null)}
-                        className="text-gray-500 hover:text-gray-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFile(null);
+                        }}
+                        className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100"
+                        aria-label="Supprimer le fichier"
                       >
                         ✕
                       </button>
@@ -351,20 +403,20 @@ const ImportModal: React.FC<ImportModalProps> = ({
               </h4>
               <ul className="text-yellow-700 text-sm space-y-1 pl-1">
                 <li className="flex items-start gap-2">
-                  <span className="text-yellow-600 mt-0.5">•</span>
+                  <span className="text-yellow-600 mt-0.5 shrink-0">•</span>
                   <span>Les colonnes <strong className="font-bold">NOM</strong> et <strong className="font-bold">PRENOMS</strong> sont obligatoires</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-yellow-600 mt-0.5">•</span>
+                  <span className="text-yellow-600 mt-0.5 shrink-0">•</span>
                   <span>Format des dates : <strong className="font-bold">AAAA-MM-JJ</strong> (ex: 2024-01-15)</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-yellow-600 mt-0.5">•</span>
-                  <span>Les contacts sont automatiquement formatés (8 chiffres)</span>
+                  <span className="text-yellow-600 mt-0.5 shrink-0">•</span>
+                  <span>Les contacts doivent être au format numérique (8 chiffres)</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-yellow-600 mt-0.5">•</span>
-                  <span>Téléchargez le template pour voir la structure</span>
+                  <span className="text-yellow-600 mt-0.5 shrink-0">•</span>
+                  <span>Téléchargez le template pour voir la structure correcte</span>
                 </li>
               </ul>
             </div>
@@ -398,7 +450,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
               <button
                 onClick={handleSubmit}
                 disabled={!file || isImporting || !!validationError}
-                className="flex-1 px-4 py-3 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-3 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2 min-h-[44px]"
               >
                 {isImporting ? (
                   <>
@@ -407,7 +459,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
                   </>
                 ) : (
                   <>
-                    <span className="text-lg">{mode === 'smart' ? '🔄' : '📤'}</span>
+                    <span className="text-lg">{getModeIcon()}</span>
                     {mode === 'smart' ? 'Synchroniser' : 'Importer'}
                   </>
                 )}
@@ -417,13 +469,13 @@ const ImportModal: React.FC<ImportModalProps> = ({
 
           {/* Pied de page avec informations supplémentaires */}
           <div className="border-t border-gray-200 bg-gray-50 px-6 py-3 rounded-b-xl">
-            <div className="text-xs text-gray-600">
+            <div className="text-xs text-gray-600 space-y-1">
               <p className="flex items-center gap-2">
                 <span>💡</span>
                 <span>L'import peut prendre quelques minutes selon la taille du fichier</span>
               </p>
               {mode === 'smart' && (
-                <p className="mt-1 flex items-center gap-2">
+                <p className="flex items-center gap-2">
                   <span>🔄</span>
                   <span>La synchronisation conserve les données existantes</span>
                 </p>

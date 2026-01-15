@@ -10,13 +10,29 @@ interface TableCartesExcelProps {
 }
 
 // ✅ TYPE POUR LES CARTES AVEC TOUTES LES PROPRIÉTÉS
-type CarteComplete = Carte & {
+interface CarteComplete {
+  ID?: string | number;
+  id?: string | number;
+  NOM?: string;
+  PRENOMS?: string;
+  CONTACT?: string;
+  "LIEU D'ENROLEMENT"?: string;
+  "SITE DE RETRAIT"?: string;
+  RANGEMENT?: string;
+  "DATE DE NAISSANCE"?: string;
+  "LIEU NAISSANCE"?: string;
+  DELIVRANCE?: string;
+  "CONTACT DE RETRAIT"?: string;
+  "DATE DE DELIVRANCE"?: string;
+  RETIREE?: boolean;
+  // Propriétés en minuscules (pour compatibilité)
   nom?: string;
   prenoms?: string;
   contact?: string;
   rangement?: string;
   delivrance?: string;
-};
+  [key: string]: any; // Pour les autres propriétés dynamiques
+}
 
 const TableCartesExcel: React.FC<TableCartesExcelProps> = ({ 
   cartes, 
@@ -31,7 +47,7 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
   useEffect(() => {
     if (cartes.length > 0) {
       console.log("🔍 DIAGNOSTIC TableCartesExcel:");
-      const firstCarte = cartes[0] as CarteComplete;
+      const firstCarte = cartes[0] as unknown as CarteComplete;
       console.log("Structure de la première carte:", {
         id: firstCarte.ID || firstCarte.id,
         NOM: firstCarte.NOM,
@@ -90,20 +106,29 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
   // ✅ PERMISSIONS ACTIVÉES SELON RÔLE
   const permissions = getPermissionsByRole();
 
+  // ✅ INTERFACE POUR LES COLONNES
+  interface Colonne {
+    key: string;
+    label: string;
+    editable: boolean;
+    width: string;
+    type?: "text" | "checkbox";
+  }
+
   // ✅ COLONNES AVEC DESIGN HARMONISÉ
-  const colonnes = [
-    { key: "NOM", label: "Nom", editable: permissions.canEditAll, width: "w-28" },
-    { key: "PRENOMS", label: "Prénoms", editable: permissions.canEditAll, width: "w-28" },
-    { key: "CONTACT", label: "Contact", editable: permissions.canEditAll, width: "w-24" },
-    { key: "LIEU D'ENROLEMENT", label: "Lieu Enrôlement", editable: permissions.canEditAll, width: "w-32" },
-    { key: "SITE DE RETRAIT", label: "Site Retrait", editable: permissions.canEditAll, width: "w-32" },
-    { key: "RANGEMENT", label: "Rangement", editable: permissions.canEditAll, width: "w-24" },
-    { key: "DATE DE NAISSANCE", label: "Date Naissance", editable: permissions.canEditAll, width: "w-28" },
-    { key: "LIEU NAISSANCE", label: "Lieu Naissance", editable: permissions.canEditAll, width: "w-28" },
-    { key: "DELIVRANCE", label: "Délivrance", editable: permissions.canModify, width: "w-24" },
-    { key: "CONTACT DE RETRAIT", label: "Contact Retrait", editable: permissions.canModify, width: "w-24" },
-    { key: "DATE DE DELIVRANCE", label: "Date Retrait", editable: permissions.canModify, width: "w-28" },
-    { key: "RETIREE", label: "Retirée", editable: permissions.canModify, type: "checkbox", width: "w-16" },
+  const colonnes: Colonne[] = [
+    { key: "NOM", label: "Nom", editable: permissions.canEditAll, width: "w-28", type: "text" },
+    { key: "PRENOMS", label: "Prénoms", editable: permissions.canEditAll, width: "w-28", type: "text" },
+    { key: "CONTACT", label: "Contact", editable: permissions.canEditAll, width: "w-24", type: "text" },
+    { key: "LIEU D'ENROLEMENT", label: "Lieu Enrôlement", editable: permissions.canEditAll, width: "w-32", type: "text" },
+    { key: "SITE DE RETRAIT", label: "Site Retrait", editable: permissions.canEditAll, width: "w-32", type: "text" },
+    { key: "RANGEMENT", label: "Rangement", editable: permissions.canEditAll, width: "w-24", type: "text" },
+    { key: "DATE DE NAISSANCE", label: "Date Naissance", editable: permissions.canEditAll, width: "w-28", type: "text" },
+    { key: "LIEU NAISSANCE", label: "Lieu Naissance", editable: permissions.canEditAll, width: "w-28", type: "text" },
+    { key: "DELIVRANCE", label: "Délivrance", editable: permissions.canModify, width: "w-24", type: "text" },
+    { key: "CONTACT DE RETRAIT", label: "Contact Retrait", editable: permissions.canModify, width: "w-24", type: "text" },
+    { key: "DATE DE DELIVRANCE", label: "Date Retrait", editable: permissions.canModify, width: "w-28", type: "text" },
+    { key: "RETIREE", label: "Retirée", editable: permissions.canModify, width: "w-16", type: "checkbox" },
   ];
 
   // ✅ FONCTION POUR TROUVER UNE VALEUR INSENSIBLE À LA CASSE
@@ -154,8 +179,8 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
   const handleCellClick = (rowIndex: number, column: string) => {
     const col = colonnes.find(col => col.key === column);
     if (col?.editable === true && col.type !== "checkbox" && canEdit) {
-      const currentValue = getCellValue(cartes[rowIndex] as CarteComplete, column);
-      setEditValue(currentValue);
+      const currentValue = getCellValue(cartes[rowIndex] as unknown as CarteComplete, column);
+      setEditValue(currentValue.toString());
       setEditingCell({ rowIndex, column });
     }
   };
@@ -172,7 +197,7 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
     
     console.log('🔍 Modification cellule:', { rowIndex, column, value });
     
-    const updatedCartes = [...cartes] as CarteComplete[];
+    const updatedCartes = [...cartes] as unknown as CarteComplete[];
     const carteToUpdate = { 
       ...updatedCartes[rowIndex],
       ID: updatedCartes[rowIndex].ID || updatedCartes[rowIndex].id,
@@ -229,7 +254,7 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
       prenoms: carteToUpdate.prenoms
     });
     
-    onUpdateCartes(updatedCartes);
+    onUpdateCartes(updatedCartes as unknown as Carte[]);
   };
 
   // ✅ SAUVEGARDE DE L'ÉDITION
@@ -269,7 +294,12 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
   const showDebugInfo = process.env.NODE_ENV === 'development';
 
   // ✅ BADGE DE STATUT DES PERMISSIONS
-  const getPermissionBadge = () => {
+  interface PermissionBadge {
+    text: string;
+    color: string;
+  }
+
+  const getPermissionBadge = (): PermissionBadge => {
     if (permissions.canEditAll) {
       return { text: "✏️ Édition complète", color: "bg-green-100 text-green-800" };
     } else if (permissions.canModify) {
@@ -352,12 +382,13 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
           <tbody>
             <AnimatePresence>
               {cartes.map((carte, rowIndex) => {
-                const carteComplete = carte as CarteComplete;
+                const carteComplete = carte as unknown as CarteComplete;
                 const isRetiree = getCellValue(carteComplete, "RETIREE");
+                const carteId = carteComplete.ID || carteComplete.id || rowIndex;
                 
                 return (
                   <motion.tr 
-                    key={carteComplete.ID || carteComplete.id || rowIndex}
+                    key={carteId}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
@@ -372,7 +403,7 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
                     {showDebugInfo && (
                       <td className="px-4 py-3 text-sm border-r border-gray-100 w-16 text-center bg-gray-50">
                         <span className="text-xs text-gray-500 font-mono">
-                          {carteComplete.ID || carteComplete.id || "N/A"}
+                          {carteId}
                         </span>
                       </td>
                     )}
@@ -381,10 +412,11 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
                       const cellValue = getCellValue(carteComplete, col.key);
                       const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.column === col.key;
                       const editable = canEditCell(col.key);
+                      const cellKey = `${carteId}-${col.key}`;
                       
                       return (
                         <motion.td 
-                          key={`${carteComplete.ID || carteComplete.id || rowIndex}-${col.key}`}
+                          key={cellKey}
                           whileHover={editable && col.type !== "checkbox" ? { scale: 1.02 } : {}}
                           className={`px-4 py-3 text-sm border-r border-gray-100 ${col.width} ${
                             col.type === "checkbox" ? "text-center" : ""
@@ -399,7 +431,7 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
                             >
                               <input
                                 type="checkbox"
-                                checked={cellValue || false}
+                                checked={!!cellValue}
                                 onChange={(e) => handleCheckboxChange(rowIndex, col.key, e.target.checked)}
                                 disabled={!editable}
                                 className={`h-5 w-5 rounded-lg border-2 focus:ring-2 focus:ring-offset-1 transition-all ${
@@ -449,7 +481,7 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
                                   <span>{cellValue}</span>
                                 </span>
                               ) : cellValue ? (
-                                <span className={editable ? "font-medium" : ""}>{cellValue}</span>
+                                <span className={editable ? "font-medium" : ""}>{cellValue.toString()}</span>
                               ) : (
                                 <span className="text-gray-400 italic">-</span>
                               )}
