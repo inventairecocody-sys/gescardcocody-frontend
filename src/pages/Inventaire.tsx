@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import Navbar from "../components/Navbar";
 import TableCartesExcel from "../components/TableCartesExcel";
@@ -18,6 +18,15 @@ interface CriteresRecherche {
   rangement: string;
 }
 
+// Interface pour la progression d'export
+interface ExportProgress {
+  percentage: number;
+  loaded: number;
+  total: number;
+  speed: string;
+  estimatedTime: string;
+}
+
 const Inventaire: React.FC = () => {
   const [resultats, setResultats] = useState<Carte[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,8 +38,15 @@ const Inventaire: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importMode, setImportMode] = useState<'standard' | 'smart'>('standard');
-  // ✅ SUPPRIMÉ: setExportFormat n'est pas utilisé
-  const [exportFormat] = useState<'csv' | 'excel'>('csv');
+  const [exportFormat, setExportFormat] = useState<'csv' | 'excel'>('csv');
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgress>({
+    percentage: 0,
+    loaded: 0,
+    total: 0,
+    speed: '0 KB/s',
+    estimatedTime: ''
+  });
   
   // ✅ ÉTAT DES CRITÈRES DE RECHERCHE
   const [criteres, setCriteres] = useState<CriteresRecherche>({
@@ -44,6 +60,7 @@ const Inventaire: React.FC = () => {
   });
 
   const role = localStorage.getItem("role") || "";
+  const exportStartTimeRef = useRef<number>(0);
 
   // ✅ CONFIGURATION DES PERMISSIONS PAR RÔLE
   const getPermissionsByRole = () => {
@@ -332,11 +349,39 @@ const Inventaire: React.FC = () => {
     }
   };
 
-  // 📥 EXPORT OPTIMISÉ (GÈRE CSV ET EXCEL)
+  // 📥 EXPORT OPTIMISÉ AVEC PROGRESSION CORRIGÉE
   const handleExport = async (format: 'csv' | 'excel' = exportFormat) => {
     if (!checkToken() || !permissions.canExport) return;
     
+    // ⚠️ Vérification de la taille estimée pour les gros fichiers
+    const estimatedSizeKB = format === 'csv' 
+      ? totalResultats * 0.5 // ~0.5KB par ligne CSV
+      : totalResultats * 2;   // ~2KB par ligne Excel
+    
+    if (estimatedSizeKB > 10 * 1024) { // > 10MB
+      const confirm = window.confirm(
+        `⚠️ Attention: Fichier volumineux estimé (${(estimatedSizeKB / 1024).toFixed(1)} MB)\n\n` +
+        `Avec ${totalResultats} cartes, l'export ${format.toUpperCase()} pourrait prendre du temps.\n\n` +
+        `✅ CSV est recommandé pour les gros exports (plus rapide et plus stable)\n` +
+        `❌ Excel peut être lent ou échouer sur des gros fichiers\n\n` +
+        `Voulez-vous quand même continuer avec ${format.toUpperCase()}?`
+      );
+      
+      if (!confirm) return;
+    }
+    
     setExportLoading(true);
+    setShowProgressModal(true);
+    exportStartTimeRef.current = Date.now();
+    
+    // Réinitialiser la progression
+    setExportProgress({
+      percentage: 0,
+      loaded: 0,
+      total: 0,
+      speed: '0 KB/s',
+      estimatedTime: 'Calcul...'
+    });
     
     try {
       // Vérifier si des critères sont actifs
@@ -365,74 +410,217 @@ const Inventaire: React.FC = () => {
       
       if (format === 'csv') {
         // Export CSV
-        endpoint = queryParams 
-          ? `/api/import-export/export/filtered-csv${queryParams}`
-          : '/api/import-export/export/csv';
-        
+        endpoint = '/api/import-export/export/csv';
         if (hasActiveFilters && resultats.length > 0) {
-          filename = `resultats-recherche-${timestamp}-${time}.csv`;
+          filename = `resultats-recherche-${timestamp}_${time}.csv`;
         } else {
-          filename = `toutes-les-cartes-${timestamp}-${time}.csv`;
+          filename = `toutes-les-cartes-${timestamp}_${time}.csv`;
         }
       } else {
         // Export Excel
-        endpoint = queryParams
-          ? `/api/import-export/export/filtered${queryParams}`
-          : '/api/import-export/export';
-        
+        endpoint = '/api/import-export/export';
         if (hasActiveFilters && resultats.length > 0) {
-          filename = `resultats-recherche-${timestamp}-${time}.xlsx`;
+          filename = `resultats-recherche-${timestamp}_${time}.xlsx`;
         } else {
-          filename = `toutes-les-cartes-${timestamp}-${time}.xlsx`;
+          filename = `toutes-les-cartes-${timestamp}_${time}.xlsx`;
         }
+      }
+      
+      // Ajouter les paramètres de recherche si disponibles
+      if (queryParams) {
+        endpoint += queryParams;
       }
       
       console.log(`📤 Export ${format.toUpperCase()} via: ${endpoint}`);
       
       const response = await api.get(endpoint, {
         responseType: 'blob',
+        timeout: 120000, // 2 minutes timeout
         onDownloadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-          console.log(`Export ${format.toUpperCase()}: ${percentCompleted}%`);
+          const now = Date.now();
+          const elapsed = (now - exportStartTimeRef.current) / 1000; // secondes
+          const loadedKB = progressEvent.loaded / 1024;
+          
+          // Calculer la vitesse (KB/s)
+          let speed = '0 KB/s';
+          if (elapsed > 0) {
+            const speedKBps = loadedKB / elapsed;
+            speed = `${speedKBps.toFixed(1)} KB/s`;
+          }
+          
+          // ✅ CORRECTION : Calcul sécurisé du pourcentage
+          let percentCompleted = 0;
+          
+          if (progressEvent.total && progressEvent.total > 0) {
+            // Si on a une taille totale valide
+            percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          } else {
+            // Estimation basée sur la taille typique pour le format
+            const estimatedTotal = format === 'csv' ? 
+              Math.max(50 * 1024, totalResultats * 0.5 * 1024) : // ~0.5KB par ligne CSV
+              Math.max(200 * 1024, totalResultats * 2 * 1024);   // ~2KB par ligne Excel
+            
+            percentCompleted = Math.min(99, Math.round((progressEvent.loaded * 100) / estimatedTotal));
+          }
+          
+          // Limiter à 0-100%
+          const safePercent = Math.min(100, Math.max(0, percentCompleted));
+          
+          // Calculer le temps estimé restant
+          let estimatedTime = '';
+          if (safePercent > 0 && safePercent < 100) {
+            const estimatedTotalTime = (elapsed * 100) / safePercent;
+            const remainingTime = estimatedTotalTime - elapsed;
+            
+            if (remainingTime < 60) {
+              estimatedTime = `${Math.ceil(remainingTime)}s`;
+            } else if (remainingTime < 3600) {
+              estimatedTime = `${Math.ceil(remainingTime / 60)}min`;
+            } else {
+              estimatedTime = `${Math.ceil(remainingTime / 3600)}h`;
+            }
+          }
+          
+          setExportProgress({
+            percentage: safePercent,
+            loaded: progressEvent.loaded,
+            total: progressEvent.total || 0,
+            speed,
+            estimatedTime
+          });
+          
+          // Log de progression (seulement aux points importants)
+          if (safePercent % 10 === 0 || safePercent === 100 || safePercent === 0) {
+            console.log(`Export ${format.toUpperCase()}: ${safePercent}% (${loadedKB.toFixed(1)}KB, ${speed})`);
+          }
         }
       });
       
-      // Télécharger le fichier
-      const url = window.URL.createObjectURL(response.data);
+      // ✅ VALIDATION RENFORCÉE DU FICHIER
+      const blob = response.data;
+      
+      // 1. Vérifier la taille minimale
+      const minSize = format === 'csv' ? 100 : 500; // CSV doit faire au moins 100 octets, Excel 500
+      if (blob.size < minSize) {
+        // Essayer de lire le contenu pour voir si c'est une erreur
+        const errorText = await blob.text();
+        console.error('Contenu du fichier suspect:', errorText.substring(0, 500));
+        
+        // Vérifier si c'est du JSON (erreur API)
+        if (errorText.trim().startsWith('{') || errorText.trim().startsWith('[')) {
+          try {
+            const jsonError = JSON.parse(errorText);
+            throw new Error(`Erreur serveur: ${jsonError.error || jsonError.message || 'Erreur inconnue'}`);
+          } catch (e) {
+            // Pas du JSON, continuer
+          }
+        }
+        
+        if (blob.size < 50) {
+          throw new Error(`Fichier ${format} corrompu (seulement ${blob.size} octets). Le serveur semble avoir retourné une erreur.`);
+        }
+      }
+      
+      // 2. Vérifier le type MIME (tolérant)
+      const contentType = response.headers['content-type'];
+      if (contentType) {
+        const isExpectedType = format === 'csv' 
+          ? contentType.includes('text/csv') || contentType.includes('application/octet-stream') || contentType.includes('text/plain')
+          : contentType.includes('spreadsheet') || contentType.includes('application/octet-stream') || contentType.includes('application/vnd.openxmlformats');
+        
+        if (!isExpectedType) {
+          console.warn(`Type MIME inattendu: ${contentType} (attendu: ${format})`);
+        }
+      }
+      
+      // 3. Télécharger le fichier
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
       
-      // Message de succès adapté au format
+      // Nettoyer
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+      
+      // Message de succès
       const count = resultats.length > 0 ? resultats.length : totalResultats;
-      let successMessage = `✅ Export ${format.toUpperCase()} terminé !\n`;
-      successMessage += `📁 Fichier: ${filename}\n`;
-      successMessage += `📊 ${count} carte${count > 1 ? 's' : ''} exportée${count > 1 ? 's' : ''}\n`;
+      const fileSizeMB = (blob.size / 1024 / 1024).toFixed(2);
+      let successMessage = `✅ Export ${format.toUpperCase()} réussi !\n`;
+      successMessage += `📁 ${filename}\n`;
+      successMessage += `📊 Taille: ${fileSizeMB} MB\n`;
       
-      if (format === 'csv') {
-        successMessage += `⚡ Format CSV optimisé pour la performance`;
-      } else if (count > 1000) {
-        successMessage += `⚠️ Pour ${count} cartes, utilisez CSV pour éviter les problèmes de performance`;
+      if (count > 0) {
+        successMessage += `📈 ${count} carte${count > 1 ? 's' : ''} exportée${count > 1 ? 's' : ''}\n`;
+      }
+      
+      // Recommandations
+      const duration = (Date.now() - exportStartTimeRef.current) / 1000;
+      if (duration > 30 && format === 'excel') {
+        successMessage += `\n⏱️ Durée: ${Math.round(duration)} secondes\n`;
+        successMessage += `💡 Astuce: Le CSV est 5x plus rapide pour les prochains exports`;
       }
       
       alert(successMessage);
       
     } catch (error: any) {
       console.error(`❌ Erreur export ${format}:`, error);
-      const errorMessage = error.response?.data?.error || error.message || 'Erreur inconnue';
       
-      // Recommander CSV en cas d'erreur
-      if (format === 'excel' && errorMessage.includes('500') || errorMessage.includes('timeout')) {
-        alert(`❌ Erreur lors de l'export Excel: ${errorMessage}\n\n💡 Essayez avec le format CSV pour les fichiers volumineux.`);
+      let errorMessage = '';
+      if (error.code === 'ECONNABORTED') {
+        errorMessage = `⏱️ Délai d'attente dépassé (2 minutes).\n\n`;
+        errorMessage += `Le serveur met trop de temps à générer le fichier.\n`;
+        errorMessage += `💡 Essayez :\n`;
+        errorMessage += `• Réduire le nombre de cartes (utilisez des filtres)\n`;
+        errorMessage += `• Utiliser le format CSV (bouton vert, 10x plus rapide)\n`;
+        errorMessage += `• Exporter par sites spécifiques\n`;
+        errorMessage += `• Diviser l'export en plusieurs parties\n`;
+      } else if (error.message?.includes('corrompu') || error.message?.includes('trop petit')) {
+        errorMessage = `❌ Fichier corrompu ou vide.\n\n`;
+        errorMessage += `Le serveur n'a pas généré un fichier valide.\n`;
+        errorMessage += `Causes possibles :\n`;
+        errorMessage += `• Problème de mémoire serveur (Render gratuit)\n`;
+        errorMessage += `• Trop de données à exporter\n`;
+        errorMessage += `• Erreur interne du serveur\n\n`;
+        errorMessage += `💡 Solutions :\n`;
+        errorMessage += `1. Utilisez CSV au lieu d'Excel\n`;
+        errorMessage += `2. Réduisez le nombre de cartes\n`;
+        errorMessage += `3. Exportez par sites\n`;
+        errorMessage += `4. Contactez l'admin si le problème persiste`;
+      } else if (error.response?.status === 413) {
+        errorMessage = `📦 Fichier trop volumineux.\n\n`;
+        errorMessage += `Le serveur refuse de traiter un fichier de cette taille.\n`;
+        errorMessage += `💡 Divisez votre export en plusieurs parties.`;
+      } else if (error.response?.status === 429) {
+        errorMessage = `🚫 Trop de requêtes.\n\n`;
+        errorMessage += `Vous avez dépassé la limite de requêtes.\n`;
+        errorMessage += `💡 Attendez 15 minutes avant de réessayer.`;
+      } else if (error.response?.status === 500) {
+        errorMessage = `⚙️ Erreur serveur 500.\n\n`;
+        errorMessage += `Le serveur a rencontré une erreur interne.\n`;
+        errorMessage += `💡 Réessayez dans quelques minutes ou contactez l'administrateur.`;
+      } else if (error.response?.status === 502 || error.response?.status === 503 || error.response?.status === 504) {
+        errorMessage = `🌐 Serveur indisponible.\n\n`;
+        errorMessage += `Le serveur ne répond pas (erreur ${error.response?.status}).\n`;
+        errorMessage += `💡 Le serveur Render gratuit peut être en veille. Réessayez dans 30 secondes.`;
       } else {
-        alert(`❌ Erreur lors de l'export: ${errorMessage}`);
+        errorMessage = error.message || 'Erreur inconnue lors de l\'export';
       }
+      
+      // Ajouter une suggestion CSV pour les erreurs Excel
+      if (format === 'excel' && !errorMessage.includes('CSV')) {
+        errorMessage += `\n\n💡 Essayez avec le format CSV (bouton vert) qui est plus stable sur Render gratuit.`;
+      }
+      
+      alert(`❌ Échec de l'export ${format.toUpperCase()}:\n\n${errorMessage}`);
+      
     } finally {
       setExportLoading(false);
+      setShowProgressModal(false);
     }
   };
 
@@ -444,9 +632,9 @@ const Inventaire: React.FC = () => {
       if (format === 'csv') {
         // Créer le template CSV directement
         const csvTemplate = `LIEU D'ENROLEMENT,SITE DE RETRAIT,RANGEMENT,NOM,PRENOMS,DATE DE NAISSANCE,LIEU NAISSANCE,CONTACT,DELIVRANCE,CONTACT DE RETRAIT,DATE DE DELIVRANCE
-Abidjan Plateau,Yopougon,A1-001,KOUAME,Jean,Thu Jul 12 2001 00:00:00 GMT+0000,Abidjan,01234567,OUI,07654321,2024-11-20
-Cocody Centre,2 Plateaux,B2-001,TRAORE,Amina,Sun Jan 25 2015 00:00:00 GMT+0000,Abidjan,09876543,OUI,01234567,2024-11-21
-Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké,05566778,NON,,2024-11-22`;
+Abidjan Plateau,Yopougon,A1-001,KOUAME,Jean,2001-07-12,Abidjan,01234567,OUI,07654321,2024-11-20
+Cocody Centre,2 Plateaux,B2-001,TRAORE,Amina,2015-01-25,Abidjan,09876543,OUI,01234567,2024-11-21
+Treichville,Cocody,C3-001,DIALLO,Fatou,1990-03-15,Bouaké,05566778,NON,,2024-11-22`;
         
         const blob = new Blob([csvTemplate], { type: 'text/csv;charset=utf-8;' });
         const url = window.URL.createObjectURL(blob);
@@ -477,6 +665,45 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
     } catch (error: any) {
       console.error('❌ Erreur téléchargement template:', error);
       alert('❌ Erreur lors du téléchargement du template');
+    }
+  };
+
+  // 🧪 TEST DE CONNEXION D'EXPORT
+  const testExportConnection = async () => {
+    try {
+      // Tester avec seulement 5 cartes
+      const testParams = new URLSearchParams({
+        limit: '5',
+        test: 'true'
+      });
+      
+      const response = await api.get(`/api/import-export/export/csv?${testParams}`, {
+        responseType: 'blob',
+        timeout: 10000
+      });
+      
+      const blob = response.data;
+      console.log('✅ Test export réussi:', {
+        size: blob.size,
+        type: blob.type,
+        headers: response.headers
+      });
+      
+      if (blob.size < 100) {
+        const text = await blob.text();
+        console.log('Contenu du test:', text);
+        if (text.includes('error') || text.includes('Error')) {
+          throw new Error('Le serveur a retourné une erreur: ' + text.substring(0, 100));
+        }
+      }
+      
+      alert(`✅ Test export réussi!\nTaille: ${(blob.size / 1024).toFixed(1)}KB\nType: ${blob.type}`);
+      return true;
+      
+    } catch (error: any) {
+      console.error('❌ Test export échoué:', error);
+      alert(`❌ Test export échoué:\n${error.message}\n\nVérifiez que le serveur backend est bien démarré.`);
+      return false;
     }
   };
 
@@ -521,6 +748,15 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
     handleRecherche(newPage);
   };
 
+  // 🔄 CHANGER LE FORMAT D'EXPORT
+  const handleExportFormatChange = (format: 'csv' | 'excel') => {
+    setExportFormat(format);
+    alert(`Format d'export changé : ${format.toUpperCase()}\n\n` +
+          (format === 'csv' 
+            ? '✅ CSV recommandé : Rapide, léger, stable sur Render gratuit'
+            : '⚠️ Excel : Plus lent, plus lourd, peut échouer sur les gros fichiers'));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar role={role} />
@@ -558,7 +794,21 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
               </div>
               Critères de Recherche
             </h2>
-            <div className="w-2 h-2 bg-[#0077B6] rounded-full animate-pulse"></div>
+            
+            {/* Indicateur de format d'export */}
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${exportFormat === 'csv' ? 'bg-green-500' : 'bg-amber-500'}`}></div>
+              <span className="text-sm font-medium text-gray-700">
+                Export: {exportFormat.toUpperCase()}
+              </span>
+              <button
+                onClick={() => handleExportFormatChange(exportFormat === 'csv' ? 'excel' : 'csv')}
+                className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
+                title="Changer le format d'export"
+              >
+                🔄
+              </button>
+            </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -685,15 +935,29 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
 
           {/* BOUTONS ACTION - IMPORT/EXPORT */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-4 border-t border-gray-200">
-            <motion.button
-              onClick={handleReset}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 flex items-center gap-2 font-medium"
-            >
-              <span>🗑️</span>
-              Réinitialiser
-            </motion.button>
+            <div className="flex gap-2">
+              <motion.button
+                onClick={handleReset}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 flex items-center gap-2 font-medium"
+              >
+                <span>🗑️</span>
+                Réinitialiser
+              </motion.button>
+              
+              {/* Bouton test (debug) */}
+              <motion.button
+                onClick={testExportConnection}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 flex items-center gap-2 font-medium text-sm"
+                title="Tester la connexion d'export"
+              >
+                <span>🧪</span>
+                Test Export
+              </motion.button>
+            </div>
             
             {/* BOUTONS D'IMPORT/EXPORT */}
             <div className="flex flex-wrap gap-3">
@@ -737,12 +1001,13 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
                   {exportLoading && exportFormat === 'csv' ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Export...
+                      CSV...
                     </>
                   ) : (
                     <>
                       <span>📄</span>
                       CSV
+                      {exportFormat === 'csv' && <span className="text-xs">✓</span>}
                     </>
                   )}
                 </motion.button>
@@ -765,12 +1030,13 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
                   {exportLoading && exportFormat === 'excel' ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Export...
+                      Excel...
                     </>
                   ) : (
                     <>
                       <span>📊</span>
                       Excel
+                      {exportFormat === 'excel' && <span className="text-xs">✓</span>}
                     </>
                   )}
                 </motion.button>
@@ -899,6 +1165,10 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
                         <span className="text-green-500 text-xs">📈</span>
                         <span>Supporte 5000+ lignes</span>
                       </li>
+                      <li className="flex items-center gap-2">
+                        <span className="text-green-500 text-xs">✅</span>
+                        <span>Stable sur Render gratuit</span>
+                      </li>
                     </ul>
                   </div>
                   <div className="bg-white p-3 rounded-lg border border-orange-200">
@@ -909,7 +1179,7 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
                     <ul className="text-sm text-orange-700 space-y-1">
                       <li className="flex items-center gap-2">
                         <span className="text-orange-500 text-xs">🐌</span>
-                        <span>Plus lent</span>
+                        <span>Plus lent (surtout gros fichiers)</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="text-orange-500 text-xs">📊</span>
@@ -917,7 +1187,11 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
                       </li>
                       <li className="flex items-center gap-2">
                         <span className="text-orange-500 text-xs">⚠️</span>
-                        <span>Limite: 1000 lignes</span>
+                        <span>Peut échouer sur Render gratuit</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="text-orange-500 text-xs">💡</span>
+                        <span>Pour fichiers &lt;1000 lignes</span>
                       </li>
                     </ul>
                   </div>
@@ -1005,6 +1279,7 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
             </h3>
             <p className="text-gray-600 max-w-md mx-auto">
               Utilisez les critères de recherche ci-dessus pour trouver des cartes spécifiques.
+              {totalResultats > 0 && ` (${totalResultats} cartes au total dans la base)`}
             </p>
             
             {/* BOUTONS D'IMPORT/EXPORT QUAND AUCUN RÉSULTAT */}
@@ -1022,7 +1297,7 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
                   </motion.button>
                 )}
                 
-                {permissions.canExport && (
+                {permissions.canExport && totalResultats > 0 && (
                   <>
                     <motion.button
                       onClick={() => handleExport('csv')}
@@ -1040,7 +1315,7 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
                       ) : (
                         <>
                           <span>📄</span>
-                          Exporter CSV
+                          Exporter CSV ({totalResultats})
                         </>
                       )}
                     </motion.button>
@@ -1061,7 +1336,7 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
                       ) : (
                         <>
                           <span>📊</span>
-                          Exporter Excel
+                          Exporter Excel ({totalResultats})
                         </>
                       )}
                     </motion.button>
@@ -1102,6 +1377,92 @@ Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké
         mode={importMode}
         onModeChange={setImportMode}
       />
+
+      {/* 📊 MODAL DE PROGRESSION D'EXPORT */}
+      {showProgressModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-lg shadow-xl max-w-md w-full"
+          >
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 bg-[#F77F00] rounded-lg flex items-center justify-center">
+                  <span className="text-white">📤</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Export en cours...
+                  </h3>
+                  <p className="text-gray-600 text-sm">
+                    {exportFormat === 'csv' ? 'Génération du fichier CSV' : 'Génération du fichier Excel'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Barre de progression */}
+              <div className="mb-4">
+                <div className="flex justify-between text-sm text-gray-700 mb-1">
+                  <span>Progression</span>
+                  <span>{exportProgress.percentage}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <motion.div 
+                    className="bg-[#F77F00] h-2.5 rounded-full transition-all duration-300"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${exportProgress.percentage}%` }}
+                  ></motion.div>
+                </div>
+              </div>
+              
+              {/* Informations de progression */}
+              <div className="grid grid-cols-2 gap-3 text-sm mb-6">
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="text-gray-500 mb-1">Vitesse</div>
+                  <div className="font-semibold">{exportProgress.speed}</div>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="text-gray-500 mb-1">Temps restant</div>
+                  <div className="font-semibold">{exportProgress.estimatedTime || 'Calcul...'}</div>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="text-gray-500 mb-1">Téléchargé</div>
+                  <div className="font-semibold">{(exportProgress.loaded / 1024).toFixed(1)} KB</div>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="text-gray-500 mb-1">Format</div>
+                  <div className="font-semibold">{exportFormat.toUpperCase()}</div>
+                </div>
+              </div>
+              
+              {/* Conseils */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <div className="flex items-center gap-2 text-blue-800 text-sm">
+                  <span>💡</span>
+                  <span>
+                    {exportFormat === 'csv' 
+                      ? 'Le CSV est optimisé pour Render gratuit (rapide et stable)'
+                      : 'Excel est plus lent, utilisez CSV pour les gros fichiers'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowProgressModal(false);
+                    // Note: On ne peut pas vraiment annuler une requête fetch en cours facilement
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Fermer (l'export continue)
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };
