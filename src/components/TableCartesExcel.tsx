@@ -61,49 +61,39 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
     }
   }, [cartes]);
 
-  // ✅ CONFIGURATION DES PERMISSIONS PAR RÔLE - IMPORT/EXPORT ACTIVÉS
+  // ✅ CONFIGURATION DES PERMISSIONS PAR RÔLE
   const getPermissionsByRole = () => {
     const roleLower = role?.toLowerCase() || "";
     
     if (roleLower.includes("administrateur")) {
       return {
         canEditAll: true,
-        canExport: true,       // <-- ACTIVÉ
-        canImport: true,       // <-- ACTIVÉ
         canModify: true
       };
     } else if (roleLower.includes("superviseur")) {
       return {
         canEditAll: true,
-        canExport: true,       // <-- ACTIVÉ
-        canImport: true,       // <-- ACTIVÉ
         canModify: true
       };
     } else if (roleLower.includes("chef d'équipe") || roleLower.includes("chef d'equipe")) {
       return {
         canEditAll: false,
-        canExport: true,       // <-- ACTIVÉ
-        canImport: false,      // <-- DÉSACTIVÉ
         canModify: false
       };
     } else if (roleLower.includes("opérateur") || roleLower.includes("operateur")) {
       return {
         canEditAll: false,
-        canExport: true,       // <-- ACTIVÉ
-        canImport: false,      // <-- DÉSACTIVÉ
         canModify: false
       };
     } else {
       return {
         canEditAll: false,
-        canExport: false,
-        canImport: false,
         canModify: false
       };
     }
   };
 
-  // ✅ PERMISSIONS ACTIVÉES SELON RÔLE
+  // ✅ PERMISSIONS
   const permissions = getPermissionsByRole();
 
   // ✅ INTERFACE POUR LES COLONNES
@@ -337,8 +327,6 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
               <h3 className="text-lg font-bold">Tableau Excel des Cartes</h3>
               <p className="text-white/90 text-sm">
                 {cartes.length} carte{cartes.length > 1 ? 's' : ''} • Rôle: {role}
-                {permissions.canImport && " • 📤 Import activé"}
-                {permissions.canExport && " • 📥 Export activé"}
               </p>
             </div>
           </div>
@@ -520,12 +508,6 @@ const TableCartesExcel: React.FC<TableCartesExcelProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <span>{cartes.length} carte{cartes.length > 1 ? 's' : ''}</span>
-            {permissions.canImport && (
-              <span className="text-green-600 text-xs">📤 Import autorisé</span>
-            )}
-            {permissions.canExport && (
-              <span className="text-blue-600 text-xs">📥 Export autorisé</span>
-            )}
           </div>
         </div>
       </div>

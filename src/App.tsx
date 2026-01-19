@@ -1,7 +1,7 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
-import Home from "./pages/Home"; // ✅ Nouvelle page d'accueil
+import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Inventaire from "./pages/Inventaire";
 import ImportExport from "./pages/ImportExport";
@@ -25,12 +25,33 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(role)) {
-    return (
-      <div className="p-6 text-center text-red-600">
-        Accès refusé : vous n'avez pas les droits pour accéder à cette page.
-      </div>
+  if (allowedRoles && allowedRoles.length > 0) {
+    const hasAccess = allowedRoles.some(allowedRole => 
+      role.toLowerCase().includes(allowedRole.toLowerCase())
     );
+    
+    if (!hasAccess) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="bg-white p-8 rounded-lg shadow-lg text-center max-w-md">
+            <div className="text-5xl mb-4">🚫</div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Accès refusé</h2>
+            <p className="text-gray-600 mb-4">
+              Vous n'avez pas les permissions nécessaires pour accéder à cette page.
+            </p>
+            <p className="text-sm text-gray-500">
+              Rôle actuel: <span className="font-semibold">{role}</span>
+            </p>
+            <button 
+              onClick={() => window.history.back()}
+              className="mt-4 px-4 py-2 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] transition-colors"
+            >
+              Retour
+            </button>
+          </div>
+        </div>
+      );
+    }
   }
 
   return <>{children}</>;
@@ -40,10 +61,11 @@ const App: React.FC = () => {
   return (
     <Router>
       <Routes>
-        {/* Page de connexion */}
+        {/* Page de connexion - publique */}
         <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Navigate to="/" replace />} />
 
-        {/* ✅ NOUVELLE PAGE D'ACCUEIL - accessible à tous les connectés */}
+        {/* Page d'accueil - accessible à tous les connectés */}
         <Route
           path="/home"
           element={
@@ -53,7 +75,7 @@ const App: React.FC = () => {
           }
         />
 
-        {/* Dashboard accessible à tous les connectés */}
+        {/* Dashboard - accessible à tous les connectés */}
         <Route
           path="/dashboard"
           element={
@@ -63,7 +85,7 @@ const App: React.FC = () => {
           }
         />
 
-        {/* Inventaire accessible à tous */}
+        {/* Inventaire - accessible à tous les connectés */}
         <Route
           path="/inventaire"
           element={
@@ -73,17 +95,17 @@ const App: React.FC = () => {
           }
         />
 
-        {/* Import/Export : pas pour Opérateurs */}
+        {/* Import/Export - accessible à Administrateur, Superviseur, Chef d'équipe */}
         <Route
           path="/import-export"
           element={
-            <ProtectedRoute allowedRoles={["Administrateur", "Superviseur", "Chef d'équipe"]}>
+            <ProtectedRoute allowedRoles={["Administrateur", "Superviseur", "Chef d'équipe", "Chef d'equipe"]}>
               <ImportExport />
             </ProtectedRoute>
           }
         />
 
-        {/* Journal : seulement Administrateur */}
+        {/* Journal - accessible seulement à Administrateur */}
         <Route
           path="/journal"
           element={
@@ -93,7 +115,7 @@ const App: React.FC = () => {
           }
         />
 
-        {/* Profil : accessible à tous */}
+        {/* Profil - accessible à tous les connectés */}
         <Route
           path="/profil"
           element={
@@ -103,12 +125,12 @@ const App: React.FC = () => {
           }
         />
 
-        {/* ✅ Redirection par défaut vers home si connecté, sinon vers login */}
+        {/* Redirection par défaut */}
         <Route 
           path="*" 
           element={
             localStorage.getItem("token") ? 
-            <Navigate to="/home" replace /> : 
+            <Navigate to="/dashboard" replace /> : 
             <Navigate to="/" replace />
           } 
         />

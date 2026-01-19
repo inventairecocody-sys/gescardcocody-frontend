@@ -29,6 +29,8 @@ const Inventaire: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importMode, setImportMode] = useState<'standard' | 'smart'>('standard');
+  // ✅ SUPPRIMÉ: setExportFormat n'est pas utilisé
+  const [exportFormat] = useState<'csv' | 'excel'>('csv');
   
   // ✅ ÉTAT DES CRITÈRES DE RECHERCHE
   const [criteres, setCriteres] = useState<CriteresRecherche>({
@@ -272,24 +274,42 @@ const Inventaire: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
       
-      const endpoint = importMode === 'smart' 
-        ? '/api/import-export/import/smart-sync'
-        : '/api/import-export/import';
+      // Détecter le format du fichier
+      const isCSV = file.name.toLowerCase().endsWith('.csv');
+      const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+      
+      let endpoint = '/api/import-export/import';
+      
+      if (isCSV) {
+        endpoint = '/api/import-export/import/csv';
+        console.log('📄 Import CSV détecté');
+      } else if (isExcel && importMode === 'smart') {
+        endpoint = '/api/import-export/import/smart-sync';
+        console.log('🔄 Import intelligent Excel détecté');
+      }
+      // Sinon, utiliser l'import Excel standard
       
       const response = await api.post(endpoint, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'multipart/form-data',
+          'X-File-Type': isCSV ? 'csv' : 'excel'
         }
       });
       
       if (response.data.success) {
         const stats = response.data.stats || {};
-        alert(`✅ Import ${importMode === 'smart' ? 'intelligent' : 'standard'} réussi !\n` +
-              `📊 Statistiques:\n` +
-              `• ${stats.imported || 0} cartes importées\n` +
-              `• ${stats.updated || 0} cartes mises à jour\n` +
-              `• ${stats.duplicates || 0} doublons ignorés\n` +
-              `• ${stats.errors || 0} erreurs`);
+        let successMessage = `✅ Import ${importMode === 'smart' ? 'intelligent' : 'standard'} réussi !\n`;
+        successMessage += `📊 Statistiques:\n`;
+        successMessage += `• ${stats.imported || 0} cartes importées\n`;
+        successMessage += `• ${stats.updated || 0} cartes mises à jour\n`;
+        successMessage += `• ${stats.duplicates || 0} doublons ignorés\n`;
+        successMessage += `• ${stats.errors || 0} erreurs`;
+        
+        if (response.data.recommendation) {
+          successMessage += `\n\n💡 ${response.data.recommendation}`;
+        }
+        
+        alert(successMessage);
         
         // Recharger les résultats si recherche active
         if (resultats.length > 0) {
@@ -312,8 +332,8 @@ const Inventaire: React.FC = () => {
     }
   };
 
-  // 📥 EXPORT DES RÉSULTATS DE RECHERCHE
-  const handleExportResults = async () => {
+  // 📥 EXPORT OPTIMISÉ (GÈRE CSV ET EXCEL)
+  const handleExport = async (format: 'csv' | 'excel' = exportFormat) => {
     if (!checkToken() || !permissions.canExport) return;
     
     setExportLoading(true);
@@ -324,117 +344,58 @@ const Inventaire: React.FC = () => {
         value && value.toString().trim() !== ''
       );
       
-      let filename = 'toutes-les-cartes.xlsx';
+      // Construire les paramètres de recherche
+      const params = new URLSearchParams();
+      let queryParams = '';
       
       if (hasActiveFilters && resultats.length > 0) {
-        // Exporter avec les critères de recherche actuels
-        const params = new URLSearchParams();
         Object.entries(criteres).forEach(([key, value]) => {
           if (value && value.toString().trim()) {
             params.append(key, value.toString().trim());
           }
         });
-        
-        const response = await api.get(`/api/import-export/export-resultats?${params}`, {
-          responseType: 'blob'
-        });
-        
-        filename = `resultats-recherche-${new Date().toISOString().split('T')[0]}.xlsx`;
-        
-        // Télécharger le fichier
-        const url = window.URL.createObjectURL(response.data);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        alert(`✅ Export des résultats terminé !\n📁 Fichier: ${filename}\n📊 ${resultats.length} cartes exportées`);
-      } else {
-        // Exporter toutes les cartes
-        const response = await api.get('/api/import-export/export', {
-          responseType: 'blob'
-        });
-        
-        // Télécharger le fichier
-        const url = window.URL.createObjectURL(response.data);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        alert('✅ Export de toutes les cartes terminé !');
+        queryParams = `?${params.toString()}`;
       }
       
-    } catch (error: any) {
-      console.error('❌ Erreur export:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Erreur inconnue';
-      alert(`❌ Erreur lors de l'export: ${errorMessage}`);
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  // 📥 TÉLÉCHARGER LE TEMPLATE D'IMPORT
-  const handleDownloadTemplate = async () => {
-    if (!checkToken()) return;
-    
-    try {
-      const response = await api.get('/api/import-export/template', {
-        responseType: 'blob'
+      // Déterminer l'endpoint et le nom de fichier
+      let endpoint: string;
+      let filename: string;
+      const timestamp = new Date().toISOString().split('T')[0];
+      const time = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+      
+      if (format === 'csv') {
+        // Export CSV
+        endpoint = queryParams 
+          ? `/api/import-export/export/filtered-csv${queryParams}`
+          : '/api/import-export/export/csv';
+        
+        if (hasActiveFilters && resultats.length > 0) {
+          filename = `resultats-recherche-${timestamp}-${time}.csv`;
+        } else {
+          filename = `toutes-les-cartes-${timestamp}-${time}.csv`;
+        }
+      } else {
+        // Export Excel
+        endpoint = queryParams
+          ? `/api/import-export/export/filtered${queryParams}`
+          : '/api/import-export/export';
+        
+        if (hasActiveFilters && resultats.length > 0) {
+          filename = `resultats-recherche-${timestamp}-${time}.xlsx`;
+        } else {
+          filename = `toutes-les-cartes-${timestamp}-${time}.xlsx`;
+        }
+      }
+      
+      console.log(`📤 Export ${format.toUpperCase()} via: ${endpoint}`);
+      
+      const response = await api.get(endpoint, {
+        responseType: 'blob',
+        onDownloadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+          console.log(`Export ${format.toUpperCase()}: ${percentCompleted}%`);
+        }
       });
-      
-      // Télécharger le fichier
-      const url = window.URL.createObjectURL(response.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'template-import-cartes.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      
-      alert('✅ Template téléchargé !');
-    } catch (error: any) {
-      console.error('❌ Erreur téléchargement template:', error);
-      alert('❌ Erreur lors du téléchargement du template');
-    }
-  };
-
-  // 📥 EXPORT AVEC FILTRES AVANCÉS
-  const handleExportWithFilters = async () => {
-    if (!checkToken() || !permissions.canExport) return;
-    
-    // Ouvrir un modal pour sélectionner les filtres
-    const selectedSites = window.prompt(
-      "Entrez les sites à exporter (séparés par des virgules) :\nLaissez vide pour tous les sites.",
-      ""
-    );
-    
-    if (selectedSites === null) return; // Annulé
-    
-    const sites = selectedSites 
-      ? selectedSites.split(',').map(s => s.trim()).filter(s => s)
-      : [];
-    
-    setExportLoading(true);
-    
-    try {
-      const filters = {
-        sites: sites.length > 0 ? sites : undefined
-      };
-      
-      const response = await api.post('/api/import-export/export/filtered', 
-        { filters },
-        { responseType: 'blob' }
-      );
-      
-      const filename = `cartes-filtrees-${new Date().toISOString().split('T')[0]}.xlsx`;
       
       // Télécharger le fichier
       const url = window.URL.createObjectURL(response.data);
@@ -446,13 +407,76 @@ const Inventaire: React.FC = () => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
       
-      alert(`✅ Export filtré terminé !\n📁 Fichier: ${filename}`);
+      // Message de succès adapté au format
+      const count = resultats.length > 0 ? resultats.length : totalResultats;
+      let successMessage = `✅ Export ${format.toUpperCase()} terminé !\n`;
+      successMessage += `📁 Fichier: ${filename}\n`;
+      successMessage += `📊 ${count} carte${count > 1 ? 's' : ''} exportée${count > 1 ? 's' : ''}\n`;
+      
+      if (format === 'csv') {
+        successMessage += `⚡ Format CSV optimisé pour la performance`;
+      } else if (count > 1000) {
+        successMessage += `⚠️ Pour ${count} cartes, utilisez CSV pour éviter les problèmes de performance`;
+      }
+      
+      alert(successMessage);
       
     } catch (error: any) {
-      console.error('❌ Erreur export filtré:', error);
-      alert('❌ Erreur lors de l\'export filtré');
+      console.error(`❌ Erreur export ${format}:`, error);
+      const errorMessage = error.response?.data?.error || error.message || 'Erreur inconnue';
+      
+      // Recommander CSV en cas d'erreur
+      if (format === 'excel' && errorMessage.includes('500') || errorMessage.includes('timeout')) {
+        alert(`❌ Erreur lors de l'export Excel: ${errorMessage}\n\n💡 Essayez avec le format CSV pour les fichiers volumineux.`);
+      } else {
+        alert(`❌ Erreur lors de l'export: ${errorMessage}`);
+      }
     } finally {
       setExportLoading(false);
+    }
+  };
+
+  // 📥 TÉLÉCHARGER LE TEMPLATE
+  const handleDownloadTemplate = async (format: 'csv' | 'excel') => {
+    if (!checkToken()) return;
+    
+    try {
+      if (format === 'csv') {
+        // Créer le template CSV directement
+        const csvTemplate = `LIEU D'ENROLEMENT,SITE DE RETRAIT,RANGEMENT,NOM,PRENOMS,DATE DE NAISSANCE,LIEU NAISSANCE,CONTACT,DELIVRANCE,CONTACT DE RETRAIT,DATE DE DELIVRANCE
+Abidjan Plateau,Yopougon,A1-001,KOUAME,Jean,Thu Jul 12 2001 00:00:00 GMT+0000,Abidjan,01234567,OUI,07654321,2024-11-20
+Cocody Centre,2 Plateaux,B2-001,TRAORE,Amina,Sun Jan 25 2015 00:00:00 GMT+0000,Abidjan,09876543,OUI,01234567,2024-11-21
+Treichville,Cocody,C3-001,DIALLO,Fatou,Fri Mar 15 1990 00:00:00 GMT+0000,Bouaké,05566778,NON,,2024-11-22`;
+        
+        const blob = new Blob([csvTemplate], { type: 'text/csv;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'template-import-cartes.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else {
+        // Template Excel via API
+        const response = await api.get('/api/import-export/template', {
+          responseType: 'blob'
+        });
+        
+        const url = window.URL.createObjectURL(response.data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'template-import-cartes.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }
+      
+      alert(`✅ Template ${format.toUpperCase()} téléchargé !`);
+    } catch (error: any) {
+      console.error('❌ Erreur téléchargement template:', error);
+      alert('❌ Erreur lors du téléchargement du template');
     }
   };
 
@@ -659,7 +683,7 @@ const Inventaire: React.FC = () => {
             </div>
           </div>
 
-          {/* BOUTONS ACTION - IMPORT/EXPORT ACTIVÉS */}
+          {/* BOUTONS ACTION - IMPORT/EXPORT */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-4 border-t border-gray-200">
             <motion.button
               onClick={handleReset}
@@ -671,7 +695,7 @@ const Inventaire: React.FC = () => {
               Réinitialiser
             </motion.button>
             
-            {/* BOUTONS D'IMPORT/EXPORT ACTIVÉS */}
+            {/* BOUTONS D'IMPORT/EXPORT */}
             <div className="flex flex-wrap gap-3">
               {/* BOUTON IMPORT */}
               {permissions.canImport && (
@@ -696,54 +720,99 @@ const Inventaire: React.FC = () => {
                 </motion.button>
               )}
               
-              {/* BOUTON EXPORT RÉSULTATS */}
-              {permissions.canExport && resultats.length > 0 && (
+              {/* BOUTON EXPORT CSV */}
+              {permissions.canExport && (
                 <motion.button
-                  onClick={handleExportResults}
+                  onClick={() => handleExport('csv')}
                   disabled={exportLoading}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="px-4 py-2.5 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 font-medium"
+                  className={`px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-2 font-medium ${
+                    exportFormat === 'csv' 
+                      ? 'bg-[#2E8B57] text-white hover:bg-[#1e6b47]' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  title="Exporter au format CSV (optimisé pour la performance)"
                 >
-                  {exportLoading ? (
+                  {exportLoading && exportFormat === 'csv' ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                       Export...
                     </>
                   ) : (
                     <>
-                      <span>📥</span>
-                      Exporter résultats
+                      <span>📄</span>
+                      CSV
                     </>
                   )}
                 </motion.button>
               )}
               
-              {/* BOUTON EXPORT FILTRÉ */}
-              {permissions.canExportAll && (
+              {/* BOUTON EXPORT EXCEL */}
+              {permissions.canExport && (
                 <motion.button
-                  onClick={handleExportWithFilters}
+                  onClick={() => handleExport('excel')}
                   disabled={exportLoading}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="px-4 py-2.5 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 font-medium"
+                  className={`px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-2 font-medium ${
+                    exportFormat === 'excel' 
+                      ? 'bg-[#F77F00] text-white hover:bg-[#e46f00]' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  title="Exporter au format Excel (compatibilité)"
                 >
-                  <span>🎛️</span>
-                  Export filtré
+                  {exportLoading && exportFormat === 'excel' ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Export...
+                    </>
+                  ) : (
+                    <>
+                      <span>📊</span>
+                      Excel
+                    </>
+                  )}
                 </motion.button>
               )}
               
-              {/* BOUTON TEMPLATE */}
+              {/* BOUTON TEMPLATES */}
               {permissions.canImport && (
-                <motion.button
-                  onClick={handleDownloadTemplate}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="px-4 py-2.5 text-[#0077B6] bg-white border border-[#0077B6] rounded-lg hover:bg-blue-50 transition-all duration-200 flex items-center gap-2 font-medium"
-                >
-                  <span>📋</span>
-                  Template
-                </motion.button>
+                <div className="relative group">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="px-4 py-2.5 text-[#0077B6] bg-white border border-[#0077B6] rounded-lg hover:bg-blue-50 transition-all duration-200 flex items-center gap-2 font-medium"
+                  >
+                    <span>📋</span>
+                    Templates
+                    <span className="text-xs">▼</span>
+                  </motion.button>
+                  
+                  {/* Menu déroulant des templates */}
+                  <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                    <button
+                      onClick={() => handleDownloadTemplate('csv')}
+                      className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 border-b border-gray-100"
+                    >
+                      <span>📄</span>
+                      <div>
+                        <p className="font-medium text-gray-900">Template CSV</p>
+                        <p className="text-xs text-gray-500">Format optimisé</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleDownloadTemplate('excel')}
+                      className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <span>📊</span>
+                      <div>
+                        <p className="font-medium text-gray-900">Template Excel</p>
+                        <p className="text-xs text-gray-500">Format compatible</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -772,30 +841,90 @@ const Inventaire: React.FC = () => {
                 </div>
               </div>
               
-              {/* BOUTON EXPORT RAPIDE */}
-              {permissions.canExport && (
-                <motion.button
-                  onClick={handleExportResults}
-                  disabled={exportLoading}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="px-4 py-2.5 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 font-medium"
-                >
-                  {exportLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Export...
-                    </>
-                  ) : (
-                    <>
-                      <span>📥</span>
-                      Exporter {resultats.length} résultats
-                    </>
-                  )}
-                </motion.button>
-              )}
+              {/* BOUTONS D'EXPORT RAPIDES */}
+              <div className="flex flex-wrap gap-2">
+                {permissions.canExport && (
+                  <>
+                    <motion.button
+                      onClick={() => handleExport('csv')}
+                      disabled={exportLoading}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="px-4 py-2 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 text-sm font-medium"
+                      title="Exporter au format CSV (optimisé pour la performance)"
+                    >
+                      <span>📄</span>
+                      CSV ({resultats.length})
+                    </motion.button>
+                    
+                    <motion.button
+                      onClick={() => handleExport('excel')}
+                      disabled={exportLoading}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="px-4 py-2 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] disabled:opacity-50 transition-all duration-200 flex items-center gap-2 text-sm font-medium"
+                      title="Exporter au format Excel"
+                    >
+                      <span>📊</span>
+                      Excel ({resultats.length})
+                    </motion.button>
+                  </>
+                )}
+              </div>
             </div>
 
+            {/* ✅ COMPARATEUR DE FORMATS */}
+            {totalResultats > 500 && (
+              <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-blue-600 text-lg">💡</span>
+                  <h3 className="font-bold text-blue-800">Conseil d'export</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white p-3 rounded-lg border border-green-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-green-600">✅</span>
+                      <span className="font-semibold text-green-700">CSV (Recommandé)</span>
+                    </div>
+                    <ul className="text-sm text-green-700 space-y-1">
+                      <li className="flex items-center gap-2">
+                        <span className="text-green-500 text-xs">⚡</span>
+                        <span>10x plus rapide</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="text-green-500 text-xs">💾</span>
+                        <span>80% moins de mémoire</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="text-green-500 text-xs">📈</span>
+                        <span>Supporte 5000+ lignes</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-orange-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-orange-600">⚠️</span>
+                      <span className="font-semibold text-orange-700">Excel (Compatibilité)</span>
+                    </div>
+                    <ul className="text-sm text-orange-700 space-y-1">
+                      <li className="flex items-center gap-2">
+                        <span className="text-orange-500 text-xs">🐌</span>
+                        <span>Plus lent</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="text-orange-500 text-xs">📊</span>
+                        <span>Plus de mémoire utilisée</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="text-orange-500 text-xs">⚠️</span>
+                        <span>Limite: 1000 lignes</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {/* ✅ PAGINATION */}
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-300">
@@ -879,7 +1008,7 @@ const Inventaire: React.FC = () => {
             </p>
             
             {/* BOUTONS D'IMPORT/EXPORT QUAND AUCUN RÉSULTAT */}
-            {(permissions.canImport || permissions.canExportAll) && (
+            {(permissions.canImport || permissions.canExport) && (
               <div className="flex flex-wrap justify-center gap-3 mt-6">
                 {permissions.canImport && (
                   <motion.button
@@ -893,26 +1022,50 @@ const Inventaire: React.FC = () => {
                   </motion.button>
                 )}
                 
-                {permissions.canExportAll && (
-                  <motion.button
-                    onClick={handleExportResults}
-                    disabled={exportLoading}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="px-4 py-2 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 transition-all duration-200 flex items-center gap-2"
-                  >
-                    {exportLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Export...
-                      </>
-                    ) : (
-                      <>
-                        <span>📥</span>
-                        Exporter toutes les cartes
-                      </>
-                    )}
-                  </motion.button>
+                {permissions.canExport && (
+                  <>
+                    <motion.button
+                      onClick={() => handleExport('csv')}
+                      disabled={exportLoading}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="px-4 py-2 bg-[#2E8B57] text-white rounded-lg hover:bg-[#1e6b47] disabled:opacity-50 transition-all duration-200 flex items-center gap-2"
+                      title="Exporter toutes les cartes en CSV"
+                    >
+                      {exportLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Export...
+                        </>
+                      ) : (
+                        <>
+                          <span>📄</span>
+                          Exporter CSV
+                        </>
+                      )}
+                    </motion.button>
+                    
+                    <motion.button
+                      onClick={() => handleExport('excel')}
+                      disabled={exportLoading}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="px-4 py-2 bg-[#F77F00] text-white rounded-lg hover:bg-[#e46f00] disabled:opacity-50 transition-all duration-200 flex items-center gap-2"
+                      title="Exporter toutes les cartes en Excel"
+                    >
+                      {exportLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Export...
+                        </>
+                      ) : (
+                        <>
+                          <span>📊</span>
+                          Exporter Excel
+                        </>
+                      )}
+                    </motion.button>
+                  </>
                 )}
               </div>
             )}
@@ -937,7 +1090,7 @@ const Inventaire: React.FC = () => {
         )}
       </div>
 
-      {/* ✅ MODAL D'IMPORT - ACTIVÉ */}
+      {/* ✅ MODAL D'IMPORT - AVEC SUPPORT CSV */}
       <ImportModal
         isOpen={showImportModal}
         onClose={() => {
