@@ -261,18 +261,31 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
           </div>
         </div>
 
-        {/* Menu Mobile */}
+        {/* OVERLAY FONCÉ POUR LE MENU MOBILE */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="md:hidden fixed inset-0 bg-black/50 z-40"
+              onClick={() => setIsMenuOpen(false)}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Menu Mobile - CORRECTION : FOND SOLIDE */}
         <AnimatePresence>
           {isMenuOpen && (
             <motion.div
               initial={{ opacity: 0, y: -20, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -20, height: 0 }}
-              className="md:hidden bg-white/98 backdrop-blur-lg shadow-2xl border-t border-gray-200 absolute top-full left-0 right-0 overflow-hidden"
+              className="md:hidden bg-white shadow-2xl border-t border-gray-200 absolute top-full left-0 right-0 overflow-hidden z-50"
               style={{ maxHeight: "calc(100vh - 56px)" }}
               aria-label="Menu de navigation mobile"
             >
-              <div className="py-2 px-2 space-y-1 max-h-[70vh] overflow-y-auto scrollbar-thin">
+              <div className="py-2 px-2 space-y-1 max-h-[70vh] overflow-y-auto">
                 {navItems.filter(item => item.accessible).map((item) => (
                   <Link
                     key={item.path}
@@ -284,7 +297,7 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
                     className={`block px-4 py-3 rounded-xl transition-all duration-300 font-semibold text-sm ${
                       isActiveLink(item.path)
                         ? `text-white bg-gradient-to-r ${item.color} shadow-lg`
-                        : `text-gray-700 ${item.hoverColor}`
+                        : `text-gray-700 bg-gray-50 hover:bg-gray-100`
                     }`}
                     aria-current={isActiveLink(item.path) ? "page" : undefined}
                   >
@@ -320,13 +333,13 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
                     
                     {/* ✅ Informations supplémentaires */}
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                      <div className="bg-white/80 rounded-lg p-1 text-center">
+                      <div className="bg-white/90 rounded-lg p-2 text-center">
                         <div className="text-gray-500">Agence</div>
                         <div className="font-medium text-gray-800 truncate">
                           {localStorage.getItem("agence")?.substring(0, 12) || "Non spécifiée"}
                         </div>
                       </div>
-                      <div className="bg-white/80 rounded-lg p-1 text-center">
+                      <div className="bg-white/90 rounded-lg p-2 text-center">
                         <div className="text-gray-500">Statut</div>
                         <div className="font-medium text-greenMain">En ligne</div>
                       </div>
@@ -344,9 +357,9 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
                         setIsMenuOpen(false);
                       }}
                       whileTap={{ scale: 0.98 }}
-                      className="bg-gradient-to-r from-blueMain/10 to-greenMain/10 border border-blueMain/20 rounded-lg p-2 text-center"
+                      className="bg-gradient-to-r from-blueMain/10 to-greenMain/10 border border-blueMain/20 rounded-lg p-3 text-center hover:bg-blue-50 transition-colors"
                     >
-                      <div className="text-blueMain text-xs">👤 Profil</div>
+                      <div className="text-blueMain text-sm font-medium">👤 Profil</div>
                     </motion.button>
                     <motion.button
                       onClick={() => {
@@ -354,9 +367,9 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
                         setIsMenuOpen(false);
                       }}
                       whileTap={{ scale: 0.98 }}
-                      className="bg-gradient-to-r from-orangeMain/10 to-blueMain/10 border border-orangeMain/20 rounded-lg p-2 text-center"
+                      className="bg-gradient-to-r from-orangeMain/10 to-blueMain/10 border border-orangeMain/20 rounded-lg p-3 text-center hover:bg-orange-50 transition-colors"
                     >
-                      <div className="text-orangeMain text-xs">🔍 Recherche</div>
+                      <div className="text-orangeMain text-sm font-medium">🔍 Recherche</div>
                     </motion.button>
                   </div>
                 </div>
