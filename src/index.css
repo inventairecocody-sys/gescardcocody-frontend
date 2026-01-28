@@ -2,7 +2,431 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Animations personnalisées */
+/* ============================================
+   RESET ET STYLES DE BASE PERSONNALISÉS
+   ============================================ */
+@layer base {
+  /* Reset amélioré */
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  }
+
+  /* Amélioration de la sélection de texte */
+  ::selection {
+    background-color: rgba(247, 127, 0, 0.3);
+    color: #1f2937;
+  }
+
+  /* Scrollbar personnalisée pour tout le site */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 5px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(45deg, #F77F00, #FF9E40);
+    border-radius: 5px;
+    border: 2px solid #f1f5f9;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(45deg, #e46f00, #FF8C00);
+  }
+
+  /* Amélioration des inputs sur mobile */
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  input[type="number"],
+  textarea,
+  select {
+    font-size: 16px !important; /* Empêche le zoom automatique sur iOS */
+  }
+
+  /* Focus visible amélioré */
+  :focus-visible {
+    outline: 2px solid #F77F00;
+    outline-offset: 2px;
+  }
+
+  /* Désactiver les animations pour les personnes qui les préfèrent réduites */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ============================================
+   COMPOSANTS PERSONNALISÉS
+   ============================================ */
+@layer components {
+  /* Carte de base avec effet de profondeur */
+  .card {
+    @apply bg-white rounded-2xl shadow-soft border border-gray-200 hover:shadow-medium transition-shadow duration-300;
+  }
+
+  /* Carte avec gradient */
+  .card-gradient {
+    @apply bg-gradient-to-r from-[#F77F00] to-[#FF9E40] text-white rounded-2xl shadow-hard;
+  }
+
+  /* Bouton primaire */
+  .btn-primary {
+    @apply bg-gradient-to-r from-[#F77F00] to-[#FF9E40] text-white font-semibold py-3 px-6 rounded-xl 
+           hover:from-[#e46f00] hover:to-[#FF8C00] hover:shadow-lg 
+           active:scale-95 transition-all duration-300 
+           disabled:opacity-50 disabled:cursor-not-allowed 
+           focus:outline-none focus:ring-4 focus:ring-orange-300 focus:ring-opacity-50;
+  }
+
+  /* Bouton secondaire */
+  .btn-secondary {
+    @apply bg-gradient-to-r from-[#0077B6] to-[#2E8B57] text-white font-semibold py-3 px-6 rounded-xl 
+           hover:from-[#005B8C] hover:to-[#1B5E20] hover:shadow-lg 
+           active:scale-95 transition-all duration-300 
+           disabled:opacity-50 disabled:cursor-not-allowed 
+           focus:outline-none focus:ring-4 focus:ring-blue-300 focus:ring-opacity-50;
+  }
+
+  /* Bouton outline */
+  .btn-outline {
+    @apply border-2 border-[#F77F00] text-[#F77F00] font-semibold py-3 px-6 rounded-xl 
+           hover:bg-[#F77F00] hover:text-white 
+           active:scale-95 transition-all duration-300 
+           disabled:opacity-50 disabled:cursor-not-allowed 
+           focus:outline-none focus:ring-4 focus:ring-orange-300 focus:ring-opacity-50;
+  }
+
+  /* Input de formulaire */
+  .input-field {
+    @apply w-full px-4 py-3 bg-white border border-gray-300 rounded-xl 
+           focus:outline-none focus:border-[#F77F00] focus:ring-4 focus:ring-orange-100 
+           placeholder-gray-400 transition-all duration-300 
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Label de formulaire */
+  .form-label {
+    @apply block text-sm font-semibold text-gray-700 mb-2;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold;
+  }
+
+  .badge-orange {
+    @apply bg-orange-100 text-[#F77F00];
+  }
+
+  .badge-blue {
+    @apply bg-blue-100 text-[#0077B6];
+  }
+
+  .badge-green {
+    @apply bg-green-100 text-[#2E8B57];
+  }
+
+  /* Alerte */
+  .alert {
+    @apply px-4 py-3 rounded-2xl border flex items-center gap-3;
+  }
+
+  .alert-success {
+    @apply bg-green-50 border-green-200 text-green-800;
+  }
+
+  .alert-warning {
+    @apply bg-orange-50 border-orange-200 text-orange-800;
+  }
+
+  .alert-error {
+    @apply bg-red-50 border-red-200 text-red-800;
+  }
+
+  .alert-info {
+    @apply bg-blue-50 border-blue-200 text-blue-800;
+  }
+
+  /* Table responsive */
+  .table-container {
+    @apply overflow-x-auto rounded-2xl border border-gray-200;
+  }
+
+  .table {
+    @apply min-w-full divide-y divide-gray-200;
+  }
+
+  .table th {
+    @apply px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50;
+  }
+
+  .table td {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-800;
+  }
+
+  /* Glass effect (effet verre) */
+  .glass {
+    @apply bg-white/80 backdrop-blur-lg border border-white/20;
+  }
+
+  /* Skeleton loading */
+  .skeleton {
+    @apply animate-pulse bg-gray-200 rounded;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-[#F77F00] to-[#0077B6] bg-clip-text text-transparent;
+  }
+
+  /* Section container */
+  .section-container {
+    @apply container mx-auto px-4 sm:px-6 lg:px-8;
+  }
+}
+
+/* ============================================
+   UTILITAIRES PERSONNALISÉS
+   ============================================ */
+@layer utilities {
+  /* Animations personnalisées */
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+
+  .animation-delay-500 {
+    animation-delay: 500ms;
+  }
+
+  .animation-delay-700 {
+    animation-delay: 700ms;
+  }
+
+  /* Effets de profondeur */
+  .shadow-soft {
+    box-shadow: 0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04);
+  }
+
+  .shadow-medium {
+    box-shadow: 0 4px 20px -3px rgba(0, 0, 0, 0.1), 0 12px 25px -2px rgba(0, 0, 0, 0.06);
+  }
+
+  .shadow-hard {
+    box-shadow: 0 10px 40px -5px rgba(0, 0, 0, 0.15), 0 20px 50px -2px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Text overflow */
+  .text-ellipsis-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .text-ellipsis-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Aspect ratios */
+  .aspect-video {
+    aspect-ratio: 16 / 9;
+  }
+
+  .aspect-square {
+    aspect-ratio: 1 / 1;
+  }
+
+  /* Background patterns */
+  .bg-dots {
+    background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  .bg-grid {
+    background-image: linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+                      linear-gradient(to bottom, #e5e7eb 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* Scroll snap */
+  .snap-x {
+    scroll-snap-type: x mandatory;
+  }
+
+  .snap-center {
+    scroll-snap-align: center;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Responsive typography */
+  .text-responsive {
+    @apply text-sm sm:text-base md:text-lg lg:text-xl;
+  }
+
+  /* Responsive padding */
+  .padding-responsive {
+    @apply px-3 sm:px-4 md:px-6 lg:px-8;
+  }
+
+  /* Flex utilities */
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+
+  .flex-between {
+    @apply flex items-center justify-between;
+  }
+
+  .flex-start {
+    @apply flex items-center justify-start;
+  }
+
+  .flex-end {
+    @apply flex items-center justify-end;
+  }
+
+  /* Grid utilities */
+  .grid-auto-fit {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+
+  .grid-auto-fill {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+
+  /* Transition utilities */
+  .transition-all-slow {
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .transition-transform-slow {
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Clip path effects */
+  .clip-triangle {
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  }
+
+  .clip-circle {
+    clip-path: circle(50% at 50% 50%);
+  }
+
+  /* Blur effects */
+  .backdrop-blur-soft {
+    backdrop-filter: blur(8px);
+  }
+
+  .backdrop-blur-medium {
+    backdrop-filter: blur(12px);
+  }
+
+  .backdrop-blur-hard {
+    backdrop-filter: blur(20px);
+  }
+
+  /* Gradient borders */
+  .border-gradient {
+    border: double 2px transparent;
+    background-image: linear-gradient(white, white), 
+                      linear-gradient(to right, #F77F00, #0077B6);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+  }
+
+  /* Text stroke */
+  .text-stroke {
+    -webkit-text-stroke: 1px currentColor;
+    paint-order: stroke fill;
+  }
+
+  /* Responsive images */
+  .img-cover {
+    @apply w-full h-full object-cover;
+  }
+
+  .img-contain {
+    @apply w-full h-full object-contain;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    @apply w-8 h-8 border-4 border-[#F77F00] border-t-transparent rounded-full animate-spin;
+  }
+
+  .spinner-small {
+    @apply w-4 h-4 border-2 border-[#F77F00] border-t-transparent rounded-full animate-spin;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-gray-200 my-6;
+  }
+
+  .divider-gradient {
+    @apply h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent my-8;
+  }
+
+  /* Tooltip base */
+  .tooltip {
+    @apply invisible absolute;
+  }
+
+  .has-tooltip:hover .tooltip {
+    @apply visible z-50;
+  }
+}
+
+/* ============================================
+   ANIMATIONS PERSONNALISÉES
+   ============================================ */
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -11,6 +435,17 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
   }
 }
 
@@ -25,10 +460,396 @@
   }
 }
 
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(247, 127, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(247, 127, 0, 0.6);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bounce-slow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+/* Classes d'animation */
 .animate-fade-in {
-  animation: fade-in 1s ease-out;
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fade-out 0.5s ease-out forwards;
 }
 
 .animate-slide-up {
-  animation: slide-up 0.8s ease-out;
+  animation: slide-up 0.6s ease-out forwards;
 }
+
+.animate-slide-down {
+  animation: slide-down 0.6s ease-out forwards;
+}
+
+.animate-slide-left {
+  animation: slide-left 0.6s ease-out forwards;
+}
+
+.animate-slide-right {
+  animation: slide-right 0.6s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s ease-out forwards;
+}
+
+.animate-scale-out {
+  animation: scale-out 0.3s ease-out forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 2s ease-in-out infinite;
+}
+
+/* Animation delays */
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-300 {
+  animation-delay: 300ms;
+}
+
+.delay-400 {
+  animation-delay: 400ms;
+}
+
+.delay-500 {
+  animation-delay: 500ms;
+}
+
+.delay-600 {
+  animation-delay: 600ms;
+}
+
+.delay-700 {
+  animation-delay: 700ms;
+}
+
+.delay-800 {
+  animation-delay: 800ms;
+}
+
+.delay-900 {
+  animation-delay: 900ms;
+}
+
+.delay-1000 {
+  animation-delay: 1000ms;
+}
+
+/* ============================================
+   STYLES SPÉCIFIQUES À L'APPLICATION
+   ============================================ */
+/* Styles pour le thème de l'application */
+.app-theme-gradient {
+  background: linear-gradient(135deg, #F77F00 0%, #FF9E40 50%, #0077B6 100%);
+}
+
+/* Styles pour la navbar */
+.navbar-gradient {
+  background: linear-gradient(90deg, #F77F00 0%, #FF9E40 100%);
+}
+
+/* Styles pour les cartes de données */
+.data-card {
+  @apply card hover:scale-[1.02] transition-all duration-300;
+}
+
+/* Styles pour les indicateurs de statut */
+.status-indicator {
+  @apply w-3 h-3 rounded-full;
+}
+
+.status-active {
+  @apply bg-green-500 animate-pulse;
+}
+
+.status-inactive {
+  @apply bg-gray-400;
+}
+
+.status-pending {
+  @apply bg-yellow-500;
+}
+
+.status-error {
+  @apply bg-red-500;
+}
+
+/* Styles pour les modals */
+.modal-overlay {
+  @apply fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4;
+}
+
+.modal-content {
+  @apply bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto border border-gray-200;
+}
+
+/* Styles pour les onglets (tabs) */
+.tab-container {
+  @apply flex border-b border-gray-200;
+}
+
+.tab {
+  @apply px-4 py-2 text-sm font-medium text-gray-600 hover:text-[#F77F00] border-b-2 border-transparent hover:border-[#F77F00] transition-all duration-300;
+}
+
+.tab-active {
+  @apply text-[#F77F00] border-b-2 border-[#F77F00];
+}
+
+/* Styles pour les badges de notification */
+.notification-badge {
+  @apply absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center;
+}
+
+/* Styles pour les loaders de page */
+.page-loader {
+  @apply fixed inset-0 flex items-center justify-center bg-white z-50;
+}
+
+/* Styles pour les formulaires de recherche */
+.search-form {
+  @apply flex gap-2 p-2 bg-white rounded-xl shadow-soft;
+}
+
+.search-input {
+  @apply flex-1 px-4 py-2 bg-transparent border-none focus:outline-none focus:ring-0;
+}
+
+/* Styles pour les paginations */
+.pagination {
+  @apply flex items-center gap-2;
+}
+
+.pagination-item {
+  @apply w-10 h-10 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors duration-300;
+}
+
+.pagination-active {
+  @apply bg-[#F77F00] text-white hover:bg-[#e46f00];
+}
+
+/* ============================================
+   STYLES RESPONSIVE SPÉCIFIQUES
+   ============================================ */
+@media (max-width: 640px) {
+  .mobile-hidden {
+    display: none !important;
+  }
+  
+  .mobile-stack {
+    flex-direction: column !important;
+  }
+  
+  .mobile-full-width {
+    width: 100% !important;
+  }
+  
+  .mobile-text-center {
+    text-align: center !important;
+  }
+  
+  .mobile-padding {
+    padding: 1rem !important;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .tablet-hidden {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1025px) {
+  .desktop-only {
+    display: block !important;
+  }
+}
+
+/* Optimisation pour les très petits écrans */
+@media (max-width: 360px) {
+  .xs-text-smaller {
+    font-size: 0.75rem !important;
+  }
+  
+  .xs-padding-smaller {
+    padding: 0.5rem !important;
+  }
+}
+
+/* Optimisation pour le mode paysage mobile */
+@media (max-height: 600px) and (orientation: landscape) {
+  .landscape-hidden {
+    display: none !important;
+  }
+  
+  .landscape-compact {
+    padding: 0.5rem !important;
+    margin: 0.5rem !important;
+  }
+}
+
+/* ============================================
+   STYLES D'ACCESSIBILITÉ
+   ============================================ */
+/* Amélioration du focus pour la navigation au clavier */
+.focus-visible {
+  @apply outline-none ring-4 ring-[#F77F00] ring-opacity-50;
+}
+
+/* Contraste amélioré pour les textes */
+.high-contrast {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+/* Support pour le mode sombre (optionnel) */
+@media (prefers-color-scheme: dark) {
+  .dark-mode-support {
+    background-color: #1f2937 !important;
+    color: #f9fafb !important;
+  }
+}
+
+/* Support pour les lecteurs d'écran */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================
+   IMPORTS DE POLICES (si nécessaire)
+   ============================================ */
+/* 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+*/
+
+/* ============================================
+   STYLES DE DÉBOGAGE (à désactiver en production)
+   ============================================ */
+/*
+.debug {
+  outline: 1px solid red !important;
+}
+
+.debug-parent {
+  outline: 1px solid blue !important;
+}
+
+.debug-child {
+  outline: 1px solid green !important;
+}
+*/
