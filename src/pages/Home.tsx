@@ -10,22 +10,65 @@ const Home: React.FC = () => {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isMobile, setIsMobile] = useState(false);
+  const [userData, setUserData] = useState({
+    nomComplet: "",
+    agence: "",
+    role: ""
+  });
   
-  const nomComplet = localStorage.getItem("NomComplet") || "";
-  const agence = localStorage.getItem("Agence") || "";
-  const role = localStorage.getItem("role") || "";
+  // ✅ CORRECTION : Fonction pour récupérer les données utilisateur de manière fiable
+  const getUserData = () => {
+    // Essayer dans cet ordre : localStorage, sessionStorage, valeurs par défaut
+    const nomComplet = localStorage.getItem("nomComplet") || 
+                      localStorage.getItem("NomComplet") || 
+                      sessionStorage.getItem("nomComplet") || 
+                      "Utilisateur";
+    
+    const agence = localStorage.getItem("agence") || 
+                   localStorage.getItem("Agence") || 
+                   sessionStorage.getItem("agence") || 
+                   "Non spécifiée";
+    
+    const role = localStorage.getItem("role") || 
+                 localStorage.getItem("Role") || 
+                 sessionStorage.getItem("role") || 
+                 "Utilisateur";
+    
+    return { nomComplet, agence, role };
+  };
 
-  // Détection responsive
+  // ✅ Détection responsive améliorée
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+      const width = window.innerWidth;
+      if (width < 768) setIsMobile(true);
+      else setIsMobile(false);
     };
     
     checkMobile();
     window.addEventListener('resize', checkMobile);
     
+    // ✅ Charger les données utilisateur au démarrage
+    const data = getUserData();
+    setUserData(data);
+    
+    console.log("📋 Données utilisateur Home.tsx:", data);
+    
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // ✅ Réessayer de récupérer les données si elles sont vides
+  useEffect(() => {
+    if (!userData.nomComplet || userData.nomComplet === "Utilisateur") {
+      setTimeout(() => {
+        const data = getUserData();
+        if (data.nomComplet !== "Utilisateur") {
+          setUserData(data);
+          console.log("🔄 Données utilisateur récupérées après délai:", data);
+        }
+      }, 1000);
+    }
+  }, [userData.nomComplet]);
 
   // Mise à jour de l'heure
   useEffect(() => {
@@ -35,7 +78,7 @@ const Home: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Formatage date/heure responsive
+  // ✅ Formatage date/heure responsive amélioré
   const formattedDate = isMobile 
     ? currentTime.toLocaleDateString('fr-FR', { 
         weekday: 'short', 
@@ -55,31 +98,43 @@ const Home: React.FC = () => {
     second: '2-digit'
   });
 
-  // Recherche rapide
+  // ✅ Recherche rapide
   const handleQuickSearch = () => {
     navigate("/inventaire");
   };
 
+  // ✅ Récupérer le prénom seulement - CORRECTION IMPORTANTE
+  const getFirstName = () => {
+    const fullName = userData.nomComplet;
+    if (!fullName || fullName === "Utilisateur") return "Utilisateur";
+    
+    // Prendre le premier mot comme prénom
+    const firstName = fullName.split(' ')[0];
+    return firstName || fullName;
+  };
+
+  const prenom = getFirstName();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
-      <Navbar role={role} />
+      <Navbar role={userData.role} />
       
       {/* Espace pour la navbar fixe */}
-      <div className="h-16"></div>
+      <div className={`h-16 ${isMobile ? 'h-14' : 'h-16'}`}></div>
       
       {/* CITATIONS DE MOTIVATION */}
-      <div className={`${isMobile ? 'px-3' : 'px-6'}`}>
-        <MotivationQuotes />
+      <div className={`${isMobile ? 'px-3 py-2' : 'px-6 py-4'}`}>
+        <MotivationQuotes isMobile={isMobile} />
       </div>
 
-      {/* EN-TÊTE PRINCIPAL - Responsive */}
+      {/* EN-TÊTE PRINCIPAL - Responsive amélioré */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
         className="bg-gradient-to-r from-[#F77F00] to-[#FF9E40] text-white shadow-lg"
       >
-        <div className={`${isMobile ? 'px-4 py-4' : 'container mx-auto px-6 py-6'}`}>
+        <div className={`${isMobile ? 'px-4 py-3' : 'container mx-auto px-6 py-6'}`}>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             {/* Informations utilisateur */}
             <div className="flex-1 space-y-3 md:space-y-4">
@@ -91,8 +146,12 @@ const Home: React.FC = () => {
                   <h1 className={`font-bold ${isMobile ? 'text-xl' : 'text-3xl'}`}>
                     Tableau de Bord
                   </h1>
-                  {isMobile && (
+                  {isMobile ? (
                     <p className="text-xs text-white/80 mt-1">
+                      COORDINATION ABIDJAN
+                    </p>
+                  ) : (
+                    <p className="text-sm text-white/80 mt-1">
                       COORDINATION ABIDJAN NORD-COCODY
                     </p>
                   )}
@@ -100,20 +159,28 @@ const Home: React.FC = () => {
               </div>
               
               <div className="space-y-2">
+                {/* ✅ CORRECTION ICI : Affichage du message de bienvenue */}
                 <div className="flex items-center gap-2">
                   <span className={isMobile ? 'text-base' : 'text-xl'}>👋</span>
                   <p className={`${isMobile ? 'text-sm' : 'text-lg'} text-white/90`}>
-                    Bienvenue, <span className="font-semibold text-white">{nomComplet.split(' ')[0]}</span>
+                    Bienvenue, <span className="font-semibold text-white">{prenom}</span>
                   </p>
                 </div>
                 
                 <div className="flex flex-wrap gap-2">
+                  {/* ✅ Agence */}
                   <span className={`${isMobile ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1'} bg-white/20 rounded-lg backdrop-blur-sm flex items-center gap-1`}>
-                    <span>🏢</span> {agence}
+                    <span>🏢</span> 
+                    {isMobile && userData.agence.length > 15 
+                      ? userData.agence.substring(0, 12) + '...' 
+                      : userData.agence}
                   </span>
+                  
+                  {/* ✅ Rôle */}
                   <span className={`${isMobile ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1'} bg-white/20 rounded-lg backdrop-blur-sm flex items-center gap-1`}>
-                    <span>🎯</span> {role}
+                    <span>🎯</span> {userData.role}
                   </span>
+                  
                   {!isMobile && (
                     <span className="text-sm px-3 py-1 bg-white/20 rounded-lg backdrop-blur-sm">
                       COORDINATION ABIDJAN NORD-COCODY
@@ -123,20 +190,20 @@ const Home: React.FC = () => {
               </div>
             </div>
             
-            {/* DATE ET HEURE - Responsive */}
+            {/* DATE ET HEURE */}
             <motion.div 
-              className={`${isMobile ? 'w-full' : 'min-w-[200px]'} ${isMobile ? 'mt-4' : ''}`}
+              className={`${isMobile ? 'w-full mt-3' : 'min-w-[200px]'}`}
               whileHover={{ scale: 1.02 }}
               transition={{ type: "spring", stiffness: 300 }}
             >
-              <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-4 text-center border border-white/30">
+              <div className={`${isMobile ? 'p-3' : 'p-4'} bg-white/20 backdrop-blur-sm rounded-2xl text-center border border-white/30`}>
                 <div className="flex items-center justify-center gap-2 text-white/90 mb-1">
-                  <span>📅</span>
+                  <span className={isMobile ? 'text-sm' : ''}>📅</span>
                   <span className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium`}>
                     {formattedDate}
                   </span>
                 </div>
-                <div className={`font-bold text-white font-mono ${isMobile ? 'text-xl' : 'text-2xl'}`}>
+                <div className={`font-bold text-white font-mono ${isMobile ? 'text-lg' : 'text-2xl'}`}>
                   {formattedTime}
                 </div>
                 <div className={`${isMobile ? 'text-xs' : 'text-sm'} text-white/70 mt-1`}>
@@ -157,11 +224,11 @@ const Home: React.FC = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="mb-6"
+            className="mb-4"
           >
             <div 
               onClick={handleQuickSearch}
-              className="bg-gradient-to-r from-[#0077B6] to-[#2E8B57] rounded-xl p-4 text-white shadow-lg relative overflow-hidden active:scale-[0.98] transition-transform"
+              className="bg-gradient-to-r from-[#0077B6] to-[#2E8B57] rounded-xl p-4 text-white shadow-lg relative overflow-hidden active:scale-[0.98] transition-transform duration-200"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -169,21 +236,20 @@ const Home: React.FC = () => {
                     <span className="text-lg">🔍</span>
                   </div>
                   <div>
-                    <h3 className="font-bold text-white">Recherche Rapide</h3>
+                    <h3 className="font-bold text-white text-sm">Recherche Rapide</h3>
                     <p className="text-xs text-white/80">Appuyer pour lancer</p>
                   </div>
                 </div>
-                <span className="text-white/60">→</span>
+                <span className="text-white/60 text-lg">→</span>
               </div>
             </div>
           </motion.section>
         ) : (
-          // Version desktop améliorée
           <motion.section
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="max-w-2xl mx-auto mb-8"
+            className="max-w-2xl mx-auto mb-6"
           >
             <Link to="/inventaire">
               <motion.div
@@ -251,20 +317,21 @@ const Home: React.FC = () => {
           </motion.section>
         )}
 
-        {/* SECTION PRINCIPALE - 2 COLONNES */}
+        {/* SECTION PRINCIPALE */}
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8"
         >
           {/* COLONNE GAUCHE - MESSAGE DE BIENVENUE */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.4 }}
+            className={isMobile ? 'mb-4' : ''}
           >
-            <WelcomeMessage />
+            <WelcomeMessage isMobile={isMobile} />
           </motion.div>
 
           {/* COLONNE DROITE - INFORMATIONS COORDINATION */}
@@ -273,30 +340,30 @@ const Home: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.5 }}
           >
-            <CoordinationInfo />
+            <CoordinationInfo isMobile={isMobile} />
           </motion.div>
         </motion.div>
 
-        {/* SECTION RECHERCHE AVANCÉE - Version responsive */}
+        {/* SECTION RECHERCHE AVANCÉE */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
-          className={`${isMobile ? 'mb-6' : 'max-w-5xl mx-auto mb-8'}`}
+          className={isMobile ? 'mb-4' : 'max-w-5xl mx-auto mb-8'}
         >
-          <div className={`bg-gradient-to-r from-[#0077B6] to-[#2E8B57] rounded-xl ${isMobile ? 'p-4' : 'rounded-2xl p-6 md:p-8'} text-white shadow-xl relative overflow-hidden`}>
+          <div className={`bg-gradient-to-r from-[#0077B6] to-[#2E8B57] ${isMobile ? 'rounded-lg p-4' : 'rounded-2xl p-6 md:p-8'} text-white shadow-xl relative overflow-hidden`}>
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/30 to-transparent"></div>
             
-            <div className="flex flex-col items-center gap-4 md:gap-6 relative z-10">
-              <div className={`${isMobile ? 'w-12 h-12' : 'w-16 h-16 md:w-20 md:h-20'} bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm`}>
-                <span className={isMobile ? 'text-2xl' : 'text-3xl md:text-4xl'}>🔍</span>
+            <div className="flex flex-col items-center gap-3 md:gap-6 relative z-10">
+              <div className={`${isMobile ? 'w-10 h-10' : 'w-16 h-16'} bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm`}>
+                <span className={isMobile ? 'text-xl' : 'text-3xl'}>🔍</span>
               </div>
               
               <div className="text-center">
-                <h2 className={`font-bold ${isMobile ? 'text-xl' : 'text-2xl md:text-3xl'} mb-2`}>
+                <h2 className={`font-bold ${isMobile ? 'text-lg' : 'text-2xl md:text-3xl'} mb-2`}>
                   Recherche Avancée des Cartes
                 </h2>
-                <p className={`${isMobile ? 'text-xs' : 'text-base md:text-lg'} text-blue-100 mb-4 md:mb-6 max-w-2xl leading-relaxed`}>
+                <p className={`${isMobile ? 'text-xs' : 'text-base md:text-lg'} text-blue-100 mb-3 md:mb-6 max-w-2xl leading-relaxed`}>
                   Trouvez rapidement les cartes grâce à des critères multiples et précis.
                 </p>
               </div>
@@ -318,8 +385,10 @@ const Home: React.FC = () => {
                     whileHover={{ scale: isMobile ? 1 : 1.05, y: isMobile ? 0 : -2 }}
                     className={`bg-white/10 rounded-lg ${isMobile ? 'p-2' : 'p-3 md:p-4'} text-center backdrop-blur-sm border border-white/20`}
                   >
-                    <div className={`${isMobile ? 'text-xl mb-1' : 'text-2xl mb-2'}`}>{item.icon}</div>
-                    <div className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium text-white/90`}>{item.text}</div>
+                    <div className={`${isMobile ? 'text-lg mb-1' : 'text-2xl mb-2'}`}>{item.icon}</div>
+                    <div className={`${isMobile ? 'text-xs' : 'text-sm'} font-medium text-white/90`}>
+                      {isMobile ? item.text.split(' ')[0] : item.text}
+                    </div>
                   </motion.div>
                 ))}
               </div>
@@ -328,31 +397,31 @@ const Home: React.FC = () => {
                 <motion.button
                   whileHover={{ scale: isMobile ? 1 : 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className={`w-full bg-white text-[#0077B6] ${isMobile ? 'px-4 py-3 rounded-lg text-sm font-semibold' : 'px-6 py-4 rounded-xl font-bold text-lg md:text-xl'} hover:bg-gray-50 transition-all duration-300 shadow-lg flex items-center justify-center gap-2 md:gap-4 border border-blue-200`}
+                  className={`w-full bg-white text-[#0077B6] ${isMobile ? 'px-4 py-3 rounded-lg text-sm font-semibold' : 'px-6 py-4 rounded-xl font-bold text-lg'} hover:bg-gray-50 transition-all duration-300 shadow-lg flex items-center justify-center gap-2 md:gap-3 border border-blue-200`}
                 >
-                  <span className={isMobile ? 'text-lg' : 'text-2xl'}>🚀</span>
+                  <span className={isMobile ? 'text-base' : 'text-xl'}>🚀</span>
                   {isMobile ? 'Recherche Avancée' : 'Accéder à la Recherche Avancée'}
-                  <span className={isMobile ? 'text-lg' : 'text-2xl'}>→</span>
+                  <span className={isMobile ? 'text-base' : 'text-xl'}>→</span>
                 </motion.button>
               </Link>
             </div>
           </div>
         </motion.section>
 
-        {/* INFORMATIONS DE CONTACT - Responsive */}
+        {/* INFORMATIONS DE CONTACT */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
-          className={`${isMobile ? 'mb-4' : 'max-w-4xl mx-auto'}`}
+          className={isMobile ? 'mb-4' : 'max-w-4xl mx-auto'}
         >
-          <div className={`bg-white/90 backdrop-blur-lg ${isMobile ? 'rounded-lg p-4' : 'rounded-2xl p-6'} shadow-lg border border-orange-100`}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} bg-gradient-to-r from-[#F77F00] to-[#FF9E40] rounded-lg flex items-center justify-center shadow`}>
-                <span className="text-white text-lg">🏢</span>
+          <div className={`bg-white/90 backdrop-blur-lg ${isMobile ? 'rounded-lg p-3' : 'rounded-2xl p-6'} shadow-lg border border-orange-100`}>
+            <div className="flex items-center gap-3 mb-3 md:mb-4">
+              <div className={`${isMobile ? 'w-8 h-8' : 'w-12 h-12'} bg-gradient-to-r from-[#F77F00] to-[#FF9E40] rounded-lg flex items-center justify-center shadow`}>
+                <span className="text-white text-sm md:text-lg">🏢</span>
               </div>
               <div>
-                <h3 className={`font-bold text-gray-800 ${isMobile ? 'text-base' : 'text-xl'}`}>
+                <h3 className={`font-bold text-gray-800 ${isMobile ? 'text-sm' : 'text-xl'}`}>
                   Coordination ABIDJAN NORD-COCODY
                 </h3>
                 <p className={`text-gray-600 ${isMobile ? 'text-xs' : 'text-sm'}`}>
@@ -360,7 +429,7 @@ const Home: React.FC = () => {
                 </p>
               </div>
             </div>
-            <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 md:grid-cols-3 gap-4'}`}>
+            <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 md:grid-cols-3 gap-4'}`}>
               {[
                 { 
                   icon: "📞", 
@@ -387,17 +456,36 @@ const Home: React.FC = () => {
                 <motion.div 
                   key={index}
                   whileHover={{ scale: isMobile ? 1 : 1.02 }}
-                  className={`${item.color} rounded-lg ${isMobile ? 'p-3' : 'p-4'} border text-center`}
+                  className={`${item.color} rounded-lg ${isMobile ? 'p-2' : 'p-4'} border text-center`}
                 >
-                  <div className={`${isMobile ? 'text-xl' : 'text-2xl'} mb-2 ${item.iconColor}`}>{item.icon}</div>
-                  <div className={`font-semibold text-gray-800 ${isMobile ? 'text-sm' : 'text-lg'}`}>{item.title}</div>
-                  <div className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-600 mt-1`}>{item.subtitle}</div>
+                  <div className={`${isMobile ? 'text-lg' : 'text-2xl'} mb-1 md:mb-2 ${item.iconColor}`}>
+                    {item.icon}
+                  </div>
+                  <div className={`font-semibold text-gray-800 ${isMobile ? 'text-xs' : 'text-lg'}`}>
+                    {isMobile && item.title.length > 15 
+                      ? item.title.substring(0, 12) + '...' 
+                      : item.title}
+                  </div>
+                  <div className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-600 mt-1`}>
+                    {item.subtitle}
+                  </div>
                 </motion.div>
               ))}
             </div>
           </div>
         </motion.section>
       </div>
+      
+      {/* ✅ DEBUG : Afficher les données utilisateur en développement */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 right-4 bg-black/80 text-white p-3 rounded-lg text-xs max-w-xs">
+          <div className="font-bold mb-1">DEBUG Home.tsx</div>
+          <div>NomComplet: {userData.nomComplet}</div>
+          <div>Prenom: {prenom}</div>
+          <div>Agence: {userData.agence}</div>
+          <div>Rôle: {userData.role}</div>
+        </div>
+      )}
     </div>
   );
 };
